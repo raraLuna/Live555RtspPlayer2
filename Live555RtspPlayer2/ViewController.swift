@@ -145,46 +145,12 @@ class ViewController: UIViewController {
                     (playAudioResponseString == "" || playAudioResponseString.starts(with: "$")) {
                     rtspClient.sendTearDown(url: uriRtspSetupVideo, session: sessionVideo)
                     rtspClient.sendTearDown(url: uriRtspSetupAudio, session: sessionAudio)
-                    //let videoTeardownResponse = rtspClient.readResponse()
-                    //let audioTeardownResponse = rtspClient.readResponse()
+                    rtspClient.closeConnection()
                     self.startRTSP()
                 }
                 
-//                rtspClient.sendPlay(url: uriRtspSetupVideo, session: sessionVideo)
-//                var playVideoResponseString = ""
-//                repeat {
-//                    playVideoResponseString = rtspClient.readResponse()
-//                } while (playVideoResponseString == "" || playVideoResponseString.starts(with: "$"))
-//
-//                rtspClient.sendPlay(url: uriRtspSetupAudio, session: sessionAudio)
-//                var playAudioResponseString = ""
-//                repeat {
-//                    playAudioResponseString = rtspClient.readResponse()
-//                } while (playAudioResponseString == "" || playAudioResponseString.starts(with: "$"))
-                
-                
-                
-                
-//                guard rtspClient.readResponseStatusCode(response: videoPlayResponse) == 200 else {
-//                    return
-//                }
-                
-                //rtspClient.sendPlay(url: uriRtspSetupAudio, session: sessionAudio)
-                //let audioPlayResponse = rtspClient.readResponse()
-//                guard rtspClient.readResponseStatusCode(response: audioPlayResponse) == 200 else {
-//                    return
-//                }
+                rtspClient.startReceiving()
             }
-            
-            //let playResponse = rtspClient.readResponse()
-//            guard rtspClient.readResponseStatusCode(response: playResponse) == 200 else {
-//                return
-//            }
-            //rtspClient.startReceiving()
-            
-            //rtspClient.sendGetParameter(session: sessionVideo)
-            //let getParameterResponse = rtspClient.readResponse()
-            //print("getParameterResponse: \(getParameterResponse)")
         }
     }
 }

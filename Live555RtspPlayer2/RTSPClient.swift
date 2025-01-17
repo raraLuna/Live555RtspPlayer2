@@ -153,10 +153,8 @@ class RTSPClient {
             print("Received response:\n\(response)")
             return response
         } else {
-            //self.parseResponseOrRTP(buffer: buffer, bytesRead: bytesRead)
             //print("Unrecognize data received")
             print("...")
-            //self.parseResponseOrRTP(buffer: buffer, bytesRead: bytesRead)
             return ""
         }
     }
@@ -177,13 +175,27 @@ class RTSPClient {
     
     func parseResponseOrRTP(buffer: [UInt8], bytesRead: Int) {
         self.accumulateBuffer.append(contentsOf: buffer[0..<bytesRead])
-        //print("\n--parseResponseOrRTP bytesRead: \(bytesRead)--")
+        print("\n--parseResponseOrRTP bytesRead: \(bytesRead)--")
         
-        if buffer[0] == 0x24 { // // RTP/TCP 패킷의 Magic Byte (0x24, '$')
-            self.handleRTPPacket()
+        
+        if buffer[0] >= 0x80 && buffer[0] <= 0xBF {
+            print("Received RTP packet")
+            
+        } else if let response = String(bytes: buffer[0..<bytesRead], encoding: .utf8) {
+            print("Received response:\n\(response)")
         } else {
-            self.handleRTSPResponse()
+            //print("Unrecognize data received")
+            print("...")
         }
+        
+        
+//        
+//        if buffer[0] == 0x24 { // // RTP/TCP 패킷의 Magic Byte (0x24, '$')
+//            self.handleRTPPacket()
+//        } else {
+//            self.handleRTSPResponse()
+//        }
+         
     }
     
     func handleRTSPResponse() {
@@ -194,7 +206,7 @@ class RTSPClient {
         
         let responseData = accumulateBuffer.subdata(in: 0..<responseRange.upperBound)
         accumulateBuffer.removeSubrange(0..<responseRange.upperBound)
-        print("responseData: \(responseData)")
+        //print("responseData: \(responseData)")
         
         if let responseString = String(data: responseData, encoding: .utf8) {
             print("Received RTSP response:\n\(responseString)")
@@ -209,10 +221,10 @@ class RTSPClient {
     func handleRTPPacket() {
         while accumulateBuffer.count >= 12 {
             let firstByte = accumulateBuffer[0]
-            print("firstByte: \(firstByte)")
+            //print("firstByte: \(firstByte)")
             
             // RTP 헤더에서 첫 번째 바이트는 8비트로 표현됨
-            // 0x80: 1000 0000(, 0xBF: 1011 1111
+            // 0x80: 1000 0000, 0xBF: 1011 1111
             guard firstByte >= 0x80 && firstByte <= 0xBF else {
                 print("This is not an RTP Packet")
                 return
@@ -290,12 +302,23 @@ class RTSPClient {
         
     }
     
+    func validateRTPPAcket(_ packet: [UInt8]) -> Bool {
+        // 1. 최소 패킷 길이 확인 (RTP 헤더 크기: 12바이트)
+        
+        // 2. RTP 버전 확인 (첫 번째 바이트의 상위 2비트가 0b10이어야함
+        
+        // 3. CSRC Count 확인 (첫 번째 바이트 하위 4비트
+        
+        // 4. 확장 헤더 확인 (X 비트가 설정된 경우)
+        
+        // 5. 패
+    }
+    
     // consuming : 값을 복사하거나 참조를 전달하는 방식을 사용하지 않도록 하여 메모리 성능 최적화함
     consuming func closeConnection() {
         if socket >= 0 {
             Darwin.close(socket)
-            print("Socket closed")
-            
+            print("Socket closed\n")
         }
     }
     
@@ -843,93 +866,8 @@ extension RTSPClient {
         // 이 함수는 capabilityMask 와 capalitilty가 같은 값인지 비교하는 함수이다
         return (capabilityMask & capability) != 0
     }
+    
+    func readRtpData() {
+        
+    }
 }
-    
-    /*
-    let url: String
-    let host: String
-    let port: Int
-    let filePath: String
-    var inputStream: InputStream?
-    var outputStream: OutputStream?
-    var cSeq: Int = 1
-    var session: String = ""
-    let userAgent = "odc1.0.0"
-    
-    init(url: String, host: String, port: Int, filePath: String) {
-        self.url = url
-        self.host = host
-        self.port = port
-        self.filePath = filePath
-    }
-    
-    func connect() -> Bool {
-        var inputStream: InputStream?
-        var outputStream: OutputStream?
-        
-        Stream.getStreamsToHost(withName: host, port: port, inputStream: &inputStream, outputStream: &outputStream)
-        
-        self.inputStream = inputStream
-        self.outputStream = outputStream
-        
-        guard let inputStream = inputStream, let outputStream = outputStream else {
-            print("Error creating ctreams")
-            return false
-        }
-        
-        inputStream.open()
-        outputStream.open()
-        
-        return true
-    }
-    
-    func sendRequest(_ request: String) {
-        guard let data = request.data(using: .utf8) else {
-            print("Error encoding request")
-            return
-        }
-        print(request)
-        
-        data.withUnsafeBytes {
-            guard let pointer = $0.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                print("Error getting pointer")
-                return
-            }
-            outputStream?.write(pointer, maxLength: data.count)
-        }
-    }
-    
-    func readResponse(bufferSize: Int = 4096) -> String? {
-        var totalRead = 0;
-        var buffer = [UInt8](repeating: 0, count: bufferSize)
-        var responseData = Data()
-        
-        guard let inputStream = self.inputStream else {
-            print("Input stream not available")
-            return nil
-        }
-        
-        while true {
-            let byteRead = inputStream.read(&buffer, maxLength: bufferSize)
-            NSLog("byteRead: \(byteRead)")
-            totalRead += byteRead
-            
-            guard byteRead >= 0 else {
-                print("Error reading response")
-                return nil
-            }
-            
-            if byteRead == 0 {
-                break
-            }
-            
-            responseData.append(buffer, count: byteRead)
-            
-            if let responseString = String(data: responseData, encoding: .utf8), responseString.contains("/r/n/r/n") {
-                break
-            }
-        }
-        NSLog("total read: \(totalRead)")
-        return String(data: responseData, encoding: .utf8)
-    }
-     */
