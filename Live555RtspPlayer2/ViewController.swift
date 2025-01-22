@@ -114,43 +114,54 @@ class ViewController: UIViewController {
                     sessionAudio = setupSessionInfo[0]
                     sessionAudioTimeout = Int(setupSessionInfo[1]) ?? 0
                 }
+
             }
+            rtspClient.sendPlay(url: self.url, session: sessionVideo)
             
-            if sessionVideo == sessionAudio {
-                rtspClient.sendPlay(url: self.url, session: sessionVideo)
-                let playResponse = rtspClient.readResponse()
-                guard rtspClient.readResponseStatusCode(response: playResponse) == 200 else {
-                    return
-                }
-            } else {
-                rtspClient.sendPlay(url: uriRtspSetupVideo, session: sessionVideo)
-                var playVideoResponseString = ""
-                for _ in 0...4 {
-                    playVideoResponseString = rtspClient.readResponse()
-                    if playVideoResponseString.contains("200 OK") {
-                        break
-                    }
-                }
+            rtspClient.startReceiving()
+            
+
+            
+            
+//            guard rtspClient.readResponseStatusCode(response: playResponse) == 200 else {
+//                return
+//            }
+            
+//            if sessionVideo == sessionAudio {
+//                rtspClient.sendPlay(url: self.url, session: sessionVideo)
+//                let playResponse = rtspClient.readResponse()
+//                guard rtspClient.readResponseStatusCode(response: playResponse) == 200 else {
+//                    return
+//                }
+//            } else {
+//                rtspClient.sendPlay(url: uriRtspSetupVideo, session: sessionVideo)
+//                var playVideoResponseString = ""
+//                for _ in 0...4 {
+//                    playVideoResponseString = rtspClient.readResponse()
+//                    if playVideoResponseString.contains("200 OK") {
+//                        break
+//                    }
+//                }
+//                
+//                rtspClient.sendPlay(url: uriRtspSetupAudio, session: sessionAudio)
+//                var playAudioResponseString = ""
+//                for _ in 0...4 {
+//                    playAudioResponseString = rtspClient.readResponse()
+//                    if playAudioResponseString.contains("200 OK") {
+//                        break
+//                    }
+//                }
                 
-                rtspClient.sendPlay(url: uriRtspSetupAudio, session: sessionAudio)
-                var playAudioResponseString = ""
-                for _ in 0...4 {
-                    playAudioResponseString = rtspClient.readResponse()
-                    if playAudioResponseString.contains("200 OK") {
-                        break
-                    }
-                }
+//                if (playVideoResponseString == "" || playVideoResponseString.starts(with: "$")) ||
+//                    (playAudioResponseString == "" || playAudioResponseString.starts(with: "$")) {
+//                    rtspClient.sendTearDown(url: uriRtspSetupVideo, session: sessionVideo)
+//                    rtspClient.sendTearDown(url: uriRtspSetupAudio, session: sessionAudio)
+//                    rtspClient.closeConnection()
+//                    self.startRTSP()
+//                }
                 
-                if (playVideoResponseString == "" || playVideoResponseString.starts(with: "$")) ||
-                    (playAudioResponseString == "" || playAudioResponseString.starts(with: "$")) {
-                    rtspClient.sendTearDown(url: uriRtspSetupVideo, session: sessionVideo)
-                    rtspClient.sendTearDown(url: uriRtspSetupAudio, session: sessionAudio)
-                    rtspClient.closeConnection()
-                    self.startRTSP()
-                }
-                
-                rtspClient.startReceiving()
-            }
+                //rtspClient.startReceiving()
+//            }
         }
     }
 }
