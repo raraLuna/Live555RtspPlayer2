@@ -66,10 +66,15 @@ class RTSPClient {
     private var session: String? = ""
     private let CRLF: String = "\r\n"
     private var cSeq: Int = 1
-    private let MAX_LINE_SIZE = 4098
+    private let MAX_LINE_SIZE = 4096
     private var accumulateBuffer = Data()
-    private var remainedRtpBytes = 0
+    private var checkDataBuffer: [UInt8] = []
+    private var dataBuffer = [[UInt8]]() // safity buffer
+    private var requisiteRtpBytes = 0
     private var rtpLength = 0
+    private let dataQueue = DispatchQueue(label: "com.odc.dataQueue", attributes: .concurrent) // 동시성 제어용 Queue
+    private let parsingDataQueue = DispatchQueue(label: "com.odc.parsingDataQueue", attributes: .concurrent)
+    private let dataAvailable = DispatchSemaphore(value: 0) // 데이터 사용 신호
     
     init(serverAddress: String, serverPort: UInt16 = 554, serverPath: String, url: String) {
         self.serverAddress = serverAddress
@@ -161,12 +166,13 @@ class RTSPClient {
         }
     }
     
+    /*
     func check4byteOfBuffer(buffer: [UInt8]) -> ([UInt8], [UInt8]) {
         print("\ncheck4byteOfBuffer START")
         print("buffer: \(buffer)")
         print("buffer.count: \(buffer.count)")
         print("rtpLength: \(self.rtpLength)")
-        print("remainedRtpBytes: \(self.remainedRtpBytes)")
+        print("remainedRtpBytes: \(self.requisiteRtpBytes)")
         var bytesForParsing: [UInt8] = []
         var remainedBytes: [UInt8] = []
         var accumulateBufferBytes: [UInt8] = []
@@ -214,8 +220,8 @@ class RTSPClient {
                         print("dataArray is fill with zero")
                         return (bytesForParsing, remainedBytes)
                     }
-                    self.remainedRtpBytes = self.rtpLength - dataArray.count
-                    print("remainedRtpBytes: \(self.remainedRtpBytes)")
+                    self.requisiteRtpBytes = self.rtpLength - dataArray.count
+                    print("remainedRtpBytes: \(self.requisiteRtpBytes)")
                     self.accumulateBuffer.append(contentsOf: dataArray)
                     accumulateBufferBytes = [UInt8](self.accumulateBuffer)
                     return (bytesForParsing, remainedBytes)
@@ -236,26 +242,26 @@ class RTSPClient {
                     return (bytesForParsing, remainedBytes)
                 } else { // RTSP 규격이 아니고 RTP header도 아닌 숫자 값이 도착함
                      // 그 외의 경우 (아주 희박한 확률로 발생해야함)
-                    if self.remainedRtpBytes != 0 {
+                    if self.requisiteRtpBytes != 0 {
                         print("check 4")
                         print("rtpLength: \(self.rtpLength)")
-                        print("remainedRtpBytes: \(self.remainedRtpBytes)")
-                        self.accumulateBuffer.append(contentsOf: buffer[i..<self.remainedRtpBytes])
+                        print("remainedRtpBytes: \(self.requisiteRtpBytes)")
+                        self.accumulateBuffer.append(contentsOf: buffer[i..<self.requisiteRtpBytes])
                         print("read rtp bytes : \(self.accumulateBuffer)")
                         print("is read all rtp data?: \(self.accumulateBuffer.count == self.rtpLength)")
                         accumulateBufferBytes = [UInt8](self.accumulateBuffer)
                         print("accumulateBufferBytes: \(accumulateBufferBytes)")
-                        remainedBytes = Array(buffer[self.remainedRtpBytes..<buffer.count])
+                        remainedBytes = Array(buffer[self.requisiteRtpBytes..<buffer.count])
                         print("remainedBytes: \(remainedBytes)")
                         self.accumulateBuffer = Data()
-                        self.remainedRtpBytes = 0
+                        self.requisiteRtpBytes = 0
                         self.rtpLength = 0
                         return (bytesForParsing, remainedBytes)
                     } else {
                         print("check 5")
                         print(" here !!!")
                         print("rtpLength: \(self.rtpLength)")
-                        print("remainedRtpBytes: \(self.remainedRtpBytes)")
+                        print("remainedRtpBytes: \(self.requisiteRtpBytes)")
                         
                         guard self.isZeroBuffer(buffer: buffer) == false else {
                             print("This is zero Buffer.")
@@ -279,6 +285,106 @@ class RTSPClient {
         print("check 6")
         return (bytesForParsing, remainedBytes)
     }
+     */
+    
+    func checkIsResponseOrRtp(buffer: [UInt8]) -> [UInt8]{
+        print("\ncheckIsResponseOrRtp START")
+        print("checkIsResponseOrRtp Buffer: \n\(buffer)")
+        print("buffer.count: \(buffer.count)")
+        //print("rtpLength: \(self.rtpLength)")
+        print("requisiteRtpBytes: \(self.requisiteRtpBytes)")
+        var remainingBytes: [UInt8] = []
+        for i in 0...buffer.count {
+            let readByte = buffer[i]
+            
+            if readByte == 0x24 { // $인 경우
+                print("----$ START----")
+                let headerBytes = Array(buffer[i..<i+4])
+                print("Header byte: \(headerBytes)")
+                let lengthBytes = Array(buffer[i+2..<i+4])
+                print("lengthBytes: \(lengthBytes)")
+                let lengthInt = Int(lengthBytes[0]) << 8 | Int(lengthBytes[1])
+                self.rtpLength = lengthInt
+                print("length: \(lengthInt) bytes")
+                print("Received RTP packet")
+                
+                if buffer.count >= lengthInt+4 { // buffer의 길이가 추출할 Length보다 긴 경우
+                    print("check 1: received RTP data all")
+                    guard self.checkDidReceivedAllRTPData(buffer: Array(buffer[i+4..<lengthInt+4]), length: lengthInt) else
+                    {
+                        print("checkDidReceivedAllRTPData() return false")
+                        return []
+                        
+                    }
+                    //let dataArray = Array(buffer[i+4..<lengthInt+4])
+                    //print("dataArray: \n\(dataArray)")
+                    self.requisiteRtpBytes = 0
+                    
+                    remainingBytes = Array(buffer[lengthInt+4..<buffer.count])
+                    return remainingBytes
+                    
+                } else { // buffer 길이가 추출해야할 length 보다 짧은 경우 (RTP 데이터 짤림)
+                    print("check 2: received RTP data slice")
+                    let dataArray = Array(buffer[i..<buffer.count])
+                    print("dataArray: \n\(dataArray)")
+                    guard self.isZeroBuffer(buffer: Array(dataArray)) == false else {
+                        print("dataArray is fill with zero")
+                        return []
+                    }
+                    
+                    print("self.rtpLength: \(self.rtpLength)")
+                    print("dataArray.count - 4: \(dataArray.count - 4)")
+                    //self.checkDataBuffer.append(contentsOf: dataArray)
+                    self.requisiteRtpBytes = self.rtpLength - (dataArray.count - 4)
+                    print("requisiteRtpBytes: \(self.requisiteRtpBytes)")
+                    return dataArray
+                }
+            } else { // $가 아닌 경우
+                print("----NO $ START----")
+                if buffer[i..<i + 4] == [82, 84, 83, 80] { // RTSP Data인 경우
+                    print("check 3: RTSP Response received")
+                    guard let dataArray = self.extractUntilCRLF(buffer: buffer) else {
+                        print("Failed to find [13, 10, 13, 10]")
+                        return []
+                    }
+                    let rtspResponseString = String(bytes: Array(dataArray), encoding: .utf8)
+                    print("RTSP Response: \n\(String(describing: rtspResponseString))")
+                    
+                    remainingBytes = Array(buffer[dataArray.count..<buffer.count])
+                    self.rtpLength = 0
+                    return remainingBytes
+                    
+                } else { // RTSP 규격이 아니고 RTP header도 아닌 숫자 값이 도착함
+                    guard self.requisiteRtpBytes != 0 else {
+                        print("check 5: CHECK WHAT HAPPEN IN BUFFER")
+                        guard self.isZeroBuffer(buffer: buffer) == false else {
+                            print("This is zero Buffer.")
+                            return []
+                        }
+                        print("rtpLength: \(self.rtpLength)")
+                        print("requisitedRtpBytes: \(self.requisiteRtpBytes)")
+                        return []
+                    }
+                    print("check 4: requistedData received")
+                    print("rtpLength: \(self.rtpLength)")
+                    print("requisitedRtpBytes: \(self.requisiteRtpBytes)")
+                    //self.checkDataBuffer.append(contentsOf: buffer[i..<self.requisiteRtpBytes-1])
+                    print("read rtp bytes : \n\(self.checkDataBuffer)")
+                    print("is read all rtp data? \(self.checkDataBuffer.count == self.rtpLength)")
+                    
+                    remainingBytes = Array(buffer[self.requisiteRtpBytes..<buffer.count])
+                    
+                    self.checkDataBuffer = []
+                    self.requisiteRtpBytes = 0
+                    self.rtpLength = 0
+                    
+                    //remainingBytes = Array(buffer[self.requisiteRtpBytes..<buffer.count])
+                    return remainingBytes
+                }
+            }
+        }
+        return []
+    }
     
     func checkDidReceivedAllRTPData(buffer: [UInt8], length: Int) -> Bool {
         guard self.isZeroBuffer(buffer: buffer) == false else {
@@ -300,6 +406,7 @@ class RTSPClient {
         var zeroCount = 0
         
         for byte in buffer {
+            //print("byte: \(byte), zerocount: \(zeroCount)")
             if byte == 0 { // 0이 등장하면
                 zeroCount += 1 // zeroCount를 올린다
                 if zeroCount >= 9 { // zeroCount가 9개 이상이면
@@ -307,7 +414,7 @@ class RTSPClient {
                     break // for문 탈출함
                 }
             } else { // 0 등장하지 않으면
-                if zeroCount == 1 { // 이전 byte가 0이었을 경우
+                if zeroCount > 0 { // 이전 byte가 0이었을 경우
                     zeroCount = 0 // zeroCount를 0로 리셋
                     isZeroBuffer = false
                 }
@@ -329,6 +436,7 @@ class RTSPClient {
         return bytesStartWithDollar
     }
     
+    /*
     func readPlayResponse(buffer: [UInt8]){
         var buffer = [UInt8](repeating: 0, count: MAX_LINE_SIZE)
         let bytesRead = Darwin.recv(self.socket, &buffer, buffer.count, 0)
@@ -430,6 +538,7 @@ class RTSPClient {
 //            return ""
 //        }
     }
+     
     
     func startReceiving() {
         //DispatchQueue.global(qos: .background).async {
@@ -445,6 +554,144 @@ class RTSPClient {
             }
         //}
     }
+     */
+    
+    func startReceivingData() {
+        print("startReceivingData()")
+        //DispatchQueue.global().async { [weak self] in
+            //guard let self = self else { return }
+            //print("DispatchQueue.global()")
+            while true {
+                var buffer = [UInt8](repeating: 0, count: self.MAX_LINE_SIZE/2)
+                let bytesRead = Darwin.recv(self.socket, &buffer, buffer.count, 0)
+                
+                guard bytesRead > 0 else {
+                    print("Connection closed or error occurred")
+                    break
+                }
+                print("\n--readResponse bytesRead: \(bytesRead)--")
+                
+                //let copiedBuffer = buffer
+                //print("ReceivingData buffer: \n\([UInt8](buffer))")
+                
+                /*
+                self.dataQueue.async(flags: .barrier) {
+                    self.dataBuffer.append(Array(buffer[0..<bytesRead]))
+                    //print("dataBuffer: \(self.dataBuffer)")
+                    print("dataBuffer count: \(self.dataBuffer.count)")
+                }
+                self.startParsingData()
+                 */
+                
+                
+                // accumulateBuffer에 안전하게 데이터 추가
+                //self.dataQueue.async(flags: .barrier) {
+                    self.accumulateBuffer.append(contentsOf: buffer[0..<bytesRead])
+                    //self.dataAvailable.signal() // 새로운 데이터가 있음을 알림
+                //}
+                //print("ReceivingData accumulateBuffer: \(accumulateBuffer.count) \n\([UInt8](accumulateBuffer))")
+                self.parsingDataQueue.sync {
+                    self.startParsingData()
+                }
+            //}
+        }
+    }
+    
+    func startParsingData() {
+        print("startParsingData()")
+        //DispatchQueue.global().async { [weak self] in
+            //guard let self = self else { return }
+            
+            //while true {
+                
+                // 데이터가 들어올 때까지 대기함
+                //self.dataAvailable.wait()
+                
+                /*
+                var checkData: [UInt8]?
+                
+                self.dataQueue.sync {
+                    if self.dataBuffer.isEmpty {
+                        checkData = self.dataBuffer.removeFirst()
+                        print("checkData: \(String(describing: checkData))")
+                    }
+                }
+                print("checkData: \(String(describing: checkData))")
+                
+                guard let data = checkData else {
+                    usleep(100)
+                    continue
+                }
+                
+                self.parsingDataQueue.async {
+                    let parsingData = self.checkIsResponseOrRtp(buffer: data)
+                    print("parsingData: \(parsingData)")
+                }
+                 */
+                
+                print("accumulateBuffer.count: \(self.accumulateBuffer.count)")
+                print("checkDataBuffer.count: \(self.checkDataBuffer.count)")
+                //print("rtpLength: \(self.rtpLength)")
+                print("requisiteRtpBytes: \(self.requisiteRtpBytes)")
+        
+                guard self.checkDataBuffer.count == 0 else {
+                    if self.requisiteRtpBytes != 0 {
+                        //print("0..<self.requisiteRtpBytes: 0..<\(self.requisiteRtpBytes)")
+                        print("accumulateBuffer: \n\([UInt8](self.accumulateBuffer))")
+                        let bytes = self.requisiteRtpBytes + (self.rtpLength + 4)
+                        print("0..<self.requisiteRtpBytes: 0..<\(bytes)")
+                        let dataArray = Array(self.accumulateBuffer[0..<bytes])
+                        self.checkDataBuffer.append(contentsOf: dataArray)
+                        self.accumulateBuffer.removeFirst(bytes)
+                    }
+                    self.checkDataBuffer = self.checkIsResponseOrRtp(buffer: [UInt8](self.checkDataBuffer))
+                    //print("checkDataBuffer 1: \n\(self.checkDataBuffer)")
+                    return
+                }
+                
+                // 일정 크기만큼 데이터를 추출하고 accumulateBuffer를 조정
+//                if self.requisiteRtpBytes != 0 {
+//                    print("self.accumulateBuffer[0..<self.requisiteRtpBytes]: \([UInt8](self.accumulateBuffer[0..<self.requisiteRtpBytes]))")
+//                    checkDataBuffer = Array(self.accumulateBuffer[0..<self.requisiteRtpBytes])
+//                    self.accumulateBuffer.removeFirst(self.requisiteRtpBytes)
+//                } else if self.requisiteRtpBytes == 0 {
+                    if self.accumulateBuffer.count >= 4096 {
+                        print("accumulateBuffer: \n\([UInt8](self.accumulateBuffer))")
+                        let dataArray = Array(self.accumulateBuffer[0..<4096])
+                        self.checkDataBuffer.append(contentsOf: dataArray)
+                        self.accumulateBuffer.removeFirst(4096)
+                    } else {
+                        let dataArray = Array(self.accumulateBuffer)
+                        self.checkDataBuffer.append(contentsOf: dataArray)
+                        self.accumulateBuffer.removeAll()
+                    }
+                //}
+
+                    
+                // 데이터 파싱
+                //self.parsingDataQueue.async {
+                    //repeat {
+                        if self.checkDataBuffer.isEmpty {
+                            print("parsingData is Empty")
+                            //break
+                        }
+                        
+                        self.checkDataBuffer = self.checkIsResponseOrRtp(buffer: [UInt8](self.checkDataBuffer))
+                        //print("checkDataBuffer 2: \n\(self.checkDataBuffer)")
+                    //} while self.checkDataBuffer.count > 0
+                //}
+            //}
+        //}
+    }
+    
+    func extractAndShift(from data: inout Data, range: Range<Data.Index>) -> Data {
+        let extractedData = data.subdata(in: range)
+        
+        data.removeSubrange(range)
+        
+        return extractedData
+    }
+    
     
     func extractUntilCRLF(buffer: [UInt8]) -> [UInt8]? {
         let targetSequence: [UInt8] = [13, 10, 13, 10]

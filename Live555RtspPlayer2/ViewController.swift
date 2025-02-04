@@ -118,7 +118,9 @@ class ViewController: UIViewController {
             }
             rtspClient.sendPlay(url: self.url, session: sessionVideo)
             
-            rtspClient.startReceiving()
+            //rtspClient.startReceiving()
+            rtspClient.startReceivingData()
+            //rtspClient.startParsingData()
             
 
             
