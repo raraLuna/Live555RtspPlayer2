@@ -78,9 +78,9 @@ class ViewController: UIViewController {
             }
             
             var sessionVideo = ""
-            var sessionAudio = ""
-            var sessionVideoTimeout = 0
-            var sessionAudioTimeout = 0
+            //var sessionAudio = ""
+            //var sessionVideoTimeout = 0
+            //var sessionAudioTimeout = 0
             var uriRtspSetupVideo = ""
             var uriRtspSetupAudio = ""
             var interleaved = ""
@@ -109,10 +109,10 @@ class ViewController: UIViewController {
 
                 if i == 0 {
                     sessionVideo = setupSessionInfo[0]
-                    sessionVideoTimeout = Int(setupSessionInfo[1]) ?? 0
+                    //sessionVideoTimeout = Int(setupSessionInfo[1]) ?? 0
                 } else {
-                    sessionAudio = setupSessionInfo[0]
-                    sessionAudioTimeout = Int(setupSessionInfo[1]) ?? 0
+                    //sessionAudio = setupSessionInfo[0]
+                    //sessionAudioTimeout = Int(setupSessionInfo[1]) ?? 0
                 }
 
             }
@@ -122,48 +122,6 @@ class ViewController: UIViewController {
             rtspClient.startReceivingData()
             //rtspClient.startParsingData()
             
-
-            
-            
-//            guard rtspClient.readResponseStatusCode(response: playResponse) == 200 else {
-//                return
-//            }
-            
-//            if sessionVideo == sessionAudio {
-//                rtspClient.sendPlay(url: self.url, session: sessionVideo)
-//                let playResponse = rtspClient.readResponse()
-//                guard rtspClient.readResponseStatusCode(response: playResponse) == 200 else {
-//                    return
-//                }
-//            } else {
-//                rtspClient.sendPlay(url: uriRtspSetupVideo, session: sessionVideo)
-//                var playVideoResponseString = ""
-//                for _ in 0...4 {
-//                    playVideoResponseString = rtspClient.readResponse()
-//                    if playVideoResponseString.contains("200 OK") {
-//                        break
-//                    }
-//                }
-//                
-//                rtspClient.sendPlay(url: uriRtspSetupAudio, session: sessionAudio)
-//                var playAudioResponseString = ""
-//                for _ in 0...4 {
-//                    playAudioResponseString = rtspClient.readResponse()
-//                    if playAudioResponseString.contains("200 OK") {
-//                        break
-//                    }
-//                }
-                
-//                if (playVideoResponseString == "" || playVideoResponseString.starts(with: "$")) ||
-//                    (playAudioResponseString == "" || playAudioResponseString.starts(with: "$")) {
-//                    rtspClient.sendTearDown(url: uriRtspSetupVideo, session: sessionVideo)
-//                    rtspClient.sendTearDown(url: uriRtspSetupAudio, session: sessionAudio)
-//                    rtspClient.closeConnection()
-//                    self.startRTSP()
-//                }
-                
-                //rtspClient.startReceiving()
-//            }
         }
     }
 }
