@@ -556,6 +556,8 @@ class RTSPClient {
     }
      */
     
+    
+    /*
     func startReceivingData() {
         print("startReceivingData()")
         //DispatchQueue.global().async { [weak self] in
@@ -682,6 +684,61 @@ class RTSPClient {
                 //}
             //}
         //}
+    }
+     
+     */
+    
+    func startReceivingData() {
+        while true {
+            // 1byte 만큼 데이터 읽기
+            var oneByteBuffer = [UInt8](repeating: 0, count: 1)
+            var threeByteBuffer = [UInt8](repeating: 0, count: 3)
+            var saveBuffer: [UInt8] = []
+            var bytesRead = Darwin.recv(self.socket, &oneByteBuffer, 1, 0)
+            
+            guard bytesRead > 0 else {
+                print("Connection closed or error occurred")
+                break
+            }
+            
+            print("\nread 1byte: \(oneByteBuffer)")
+            
+            if oneByteBuffer[0] == 0x24 { // $ 도착
+                print("----$ START----")
+                bytesRead = Darwin.recv(self.socket, &threeByteBuffer, 3, 0)
+                let channel = threeByteBuffer[0]
+                let lengthBytes = Array(threeByteBuffer[1..<3])
+                let lengthInt = Int(lengthBytes[0]) << 8 | Int(lengthBytes[1])
+                print("channel: \(channel)")
+                print("read rtp length byte: \(lengthBytes)")
+                print("length: \(lengthInt) bytes")
+                
+                var rtpBuffer = [UInt8](repeating: 0, count: lengthInt)
+                bytesRead = Darwin.recv(self.socket, &rtpBuffer, lengthInt, 0)
+                print("received all data? \(lengthInt == bytesRead)")
+                if lengthInt == bytesRead {
+                    print("read rtpBuffer: \(rtpBuffer)")
+                }
+            } else {
+                if oneByteBuffer[0] == 0x52 { //"R" 도착
+                    saveBuffer.append(oneByteBuffer[0])
+                    bytesRead = Darwin.recv(self.socket, &threeByteBuffer, 3, 0)
+                    print("read next bytes: \(threeByteBuffer)")
+                    if threeByteBuffer[0..<3] == [84, 83, 80]{
+                        print("----RTSP response ----")
+                        for i in 0..<threeByteBuffer.count {
+                            saveBuffer.append(threeByteBuffer[i])
+                        }
+                        repeat {
+                            bytesRead = Darwin.recv(self.socket, &oneByteBuffer, 1, 0)
+                            saveBuffer.append(oneByteBuffer[0])
+                        } while !saveBuffer.contains([13, 10, 13, 10])
+                        print("\(String(describing: String(bytes: Array(saveBuffer), encoding: .utf8)))")
+                    }
+                }
+                continue
+            }
+        }
     }
     
     func extractAndShift(from data: inout Data, range: Range<Data.Index>) -> Data {
