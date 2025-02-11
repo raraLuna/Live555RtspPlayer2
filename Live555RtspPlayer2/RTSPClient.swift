@@ -857,6 +857,13 @@ extension RTSPClient {
     func parseHeaderData(header: [UInt8], packetSize: Int) -> RtpHeader {
         guard header.count >= RTP_HEADER_SIZE else { return RtpHeader() }
         
+        // 각 요소의 길이만큼 bit 계산을 하기 위한 비트 연산 과정
+        // 예를 들면 1000 0000 (128, 0x80)의 첫 2비트인 10을 계산하기 위해
+        //     AND 1100 0000 (192, 0xC0)
+        //     ---------------------------
+        //         1000 0000
+        //              >> 6 shift 연산 하면 오른쪽으로 6칸 이동하고 빈칸 0으로 채움
+        //         0000 0010 (2, 0x02) 가 결과로 나온다. version 값
         let version = Int((header[0] & 0xC0) >> 6)
         if version != 2 {
             print("Not an RTP packet version:\(version)")
@@ -916,9 +923,39 @@ extension RTSPClient {
 //                return rtpHeader
 //            }
 //        }
-        return RtpHeader()
+        //return RtpHeader()
     }
 }
+
+
+/*
+
+ RTP header format: https://tools.ietf.org/html/rfc3550#section-5
+
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |V=2|P|X|  CC   |M|     PT      |       sequence number         |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |                           timestamp                           |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |           synchronization source (SSRC) identifier            |
+ +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+ |            contributing source (CSRC) identifiers             |
+ |                             ....                              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+ Header extension: https://tools.ietf.org/html/rfc3550#section-5.3.1
+
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |      defined by profile       |           length              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |                        header extension                       |
+ |                             ....                              |
+
+ */
     
     
 
