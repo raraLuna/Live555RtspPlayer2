@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreMedia
 
 struct Capablility {
     static let RTSP_CAPABILITY_NONE = 0
@@ -38,7 +39,7 @@ struct RtpHeader {
     var cc: Int = 0
     var marker: Int = 0
     var payloadType: Int = 0
-    var sequenceNumber: Int = 0
+    var sequenceNumber: UInt16 = 0
     var timeStamp: UInt32 = 0
     var ssrc: UInt32 = 0
     var payloadSize: Int = 0
@@ -65,7 +66,7 @@ class AudioTrack: Track {
 
 enum Codec {
     static let VIDEO_CODEC_H264 = 0
-    static let VIEEO_CODEC_H265 = 1
+    static let VIDEO_CODEC_H265 = 1
     static let AUDIO_CODEC_AAC = 0
     static let AUDIO_CODEC_UNKNOWN = -1
 }
@@ -90,9 +91,11 @@ class RTSPClient {
     private let dataAvailable = DispatchSemaphore(value: 0) // 데이터 사용 신호
     
     private let RTP_HEADER_SIZE = 12
-    private var firstTime: Int64 = 0
-    private var firstTimeStamp: Int64 = 0
-    private var lastTimeStamp: Int64 = 0
+    
+    //private var encodeType : EncodeType = EncodeType.h264
+    private var videoHz = 0
+    private var previousTimestamp: UInt32 = 0
+    private var estimatedFPS: UInt32 = 0
     
     init(serverAddress: String, serverPort: UInt16 = 554, serverPath: String, url: String) {
         self.serverAddress = serverAddress
@@ -303,6 +306,21 @@ extension RTSPClient {
                 print("RTP buffer : \(rtpBuffer)")
                 let rtpHeader = self.readHeader(from: rtpBuffer, packetSize: lengthInt)
                 
+                print("...DECODING...")
+                let h264Frame = processH264RtpPacket(rtpBuffer)
+                print("Decoded H.264 frame: \(h264Frame.count) bytes")
+
+                let decoder = H264Decoder()
+                if h264Frame.count != 0 {
+                    decoder.decode(nalData: Data(h264Frame))
+                } else {
+                    let aacFrame = processAacRtpPacket(rtpBuffer)
+                    print("Decoded AAC frame: \(aacFrame.count) bytes")
+                }
+                
+                
+                
+                
             } else {
                 if oneByteBuffer[0] == 0x52 { //"R" 도착
                     saveBuffer.append(oneByteBuffer[0])
@@ -480,11 +498,17 @@ extension RTSPClient {
                             case "h264":
                                 videoTrack.videoCodec = Codec.VIDEO_CODEC_H264
                             case "h265":
-                                videoTrack.videoCodec = Codec.VIEEO_CODEC_H265
+                                videoTrack.videoCodec = Codec.VIDEO_CODEC_H265
                             default:
                                 print("Unknown video codec \(codecDetails[0])")
                             }
-                            print("Video: \(codecDetails[0])")
+
+//                            let type = videoTrack.videoCodec == 0 ? EncodeType.h264 : EncodeType.h265
+//                            self.encodeType = type
+//                            self.videoHz = Int(codecDetails[1].lowercased()) ?? 0
+//                            print("Video: \(self.encodeType)")
+                            print("fps: \(self.videoHz)")
+                            
                         } else if let audioTrack = track as? AudioTrack {
                             switch codecDetails[0].lowercased() {
                             case "mpeg4-generic", "mp4a-latm":
@@ -874,13 +898,19 @@ extension RTSPClient {
         let extensionBit = Int((header[0] & 0x10) >> 4)
         let marker = Int((header[1] & 0x80) >> 7)
         let payloadType = Int(header[1] & 0x7F)
-        let sequenceNumber = Int(header[2]) << 8 | Int(header[3])
-        let timeStamp = UInt32(header[4]) << 24 | UInt32(header[5]) << 16 | UInt32(header[6]) << 8 | UInt32(header[7])
-        let ssrc = UInt32(header[8]) << 24 | UInt32(header[9]) << 16 | UInt32(header[10]) << 8 | UInt32(header[11])
+        let sequenceNumber = UInt16(header[2]) << 8 | UInt16(header[3])
+        
+//        let timeStamp = UInt32(header[4]) << 24 | UInt32(header[5]) << 16 | UInt32(header[6]) << 8 | UInt32(header[7])
+//        let ssrc = UInt32(header[8]) << 24 | UInt32(header[9]) << 16 | UInt32(header[10]) << 8 | UInt32(header[11])
+        let timeStamp = (UInt32(header[4]) << 24) | (UInt32(header[5]) << 16) | (UInt32(header[6]) << 8) | UInt32(header[7])
+        let ssrc = (UInt32(header[8]) << 24) | (UInt32(header[9]) << 16) | (UInt32(header[10]) << 8) | UInt32(header[11])
+                
         let payloadSize = packetSize - RTP_HEADER_SIZE
         
         print("RTP Header:\nversion: \(version)\npadding: \(padding)\nextensionBit: \(extensionBit)\ncc: 0\nmarker: \(marker)\npayloadType: \(payloadType)\nsequenceNumber: \(sequenceNumber)\ntimeStamp: \(timeStamp)\nssrc: \(ssrc)\npayloadSize: \(payloadSize)")
 
+        self.calculateFPS(currentTimestamp: timeStamp)
+        
         return RtpHeader(
             version: version,
             padding: padding,
@@ -924,6 +954,99 @@ extension RTSPClient {
 //            }
 //        }
         //return RtpHeader()
+    }
+    
+    func calculateFPS(currentTimestamp: UInt32) {
+        let previous = previousTimestamp
+        let timestampDiff = currentTimestamp &- previous // &-: overflow 방지 연산자
+        print("timestampDiff: \(timestampDiff)")
+        if timestampDiff > 0 {
+            estimatedFPS = UInt32(90000.0) / timestampDiff
+            print("Estimated FPS: \(String(describing: estimatedFPS))")
+        }
+        
+        self.previousTimestamp = currentTimestamp
+    }
+    
+    func processH264RtpPacket(_ rtpPacket: [UInt8]) -> [UInt8] {
+        guard rtpPacket.count > 12 else { return [] }
+        
+        let payload = Array(rtpPacket[12...]) // RTP 헤더(12바이트) 제거
+        let nalUnitType = payload[0] & 0x1F // 첫 바이트에서 NAL 유형 추출
+        print("nalUnitType: \(nalUnitType)")
+        switch nalUnitType {
+        case 1...23:
+            // 단일 NAL 단위 (Single NALU)
+            //return [0x00, 0x00, 0x00, 0x01] + payload
+            return payload
+        case 24:
+            // STAP-A (Single-time Aggregation Packet
+            return handleStapA(payload)
+        case 28:
+            // FU-A (Fragmentation Unit-A
+            return handleFuA(payload)
+        default:
+            return []
+        }
+    }
+    
+    // SPS (Sequenese Parameter Set) & PPS(Picture Parameter Set) 같이
+    // 작은 데이터 여러 개를 하나의 패킷으로 묶어서 전송하는 경우
+    func handleStapA(_ payload: [UInt8]) -> [UInt8] {
+        var nalUnits: [UInt8] = []
+        var offset = 1 // STAP-A 헤더 건너뛰기
+        
+        while offset + 2 < payload.count {
+            let nalSize = Int(payload[offset]) << 8 | Int(payload[offset + 1]) // NAL 크기
+            offset += 2
+            if offset + nalSize > payload.count { break }
+            //nalUnits.append(contentsOf: [0x00, 0x00, 0x00, 0x01] + payload[offset..<offset+nalSize])
+            nalUnits.append(contentsOf: payload[offset..<offset+nalSize])
+            offset += nalSize
+        }
+        
+        return nalUnits
+    }
+    
+    // 큰 크기의 NAL Unit(예: Key Frame)을 여러 개의 RTP 패킷으로 쪼개어 전송하는 경우
+    func handleFuA(_ payload: [UInt8]) -> [UInt8] {
+        let fuIndicator = payload[0] // FU Indicator
+        let fuHeader = payload[1] // FU Indicator
+        let startBit = (fuHeader & 0x80) != 0
+        //let endBit = (fuHeader & 0x40) != 0
+        let nalType = fuHeader & 0x1F
+        let nalUnitHeader = (fuIndicator & 0xE0) | nalType
+        
+        let nalData = Array(payload[2...]) // FU payload
+        
+        if startBit {
+            //return [0x00, 0x00, 0x00, 0x01, nalUnitHeader] + nalData
+            return [nalUnitHeader] + nalData
+        } else {
+            return nalData
+        }
+    }
+    
+    func processAacRtpPacket(_ rtpPacket: [UInt8]) -> [UInt8] {
+        guard rtpPacket.count > 12 else { return [] } // RTP 크기 확인
+        
+        let payload = Array(rtpPacket[12...]) // RTP 헤더 제거
+        let adtsHeader = createAdtsHeader(for: payload.count)
+        
+        return adtsHeader + payload
+    }
+    
+    // ADTS 헤더 생성 (AAC-LC, 44.1kHz, 2채널 예제)
+    func createAdtsHeader(for aacFrameSize: Int) -> [UInt8] {
+        let fullLength = aacFrameSize + 7
+        return [
+            0xFF, 0xF1, // Sync word
+            0x50,       // Profile (AAC-LC), (Sampling Freq Index (44.1kHz), Private Bit
+            0x80,       // Channel config (streo)
+            UInt8(fullLength >> 6),   // Frame Length (high)
+            UInt8((fullLength & 0x3F) << 2),   // Frame Length (low
+            0xFC        // CRC disabled
+        ]
     }
 }
 
