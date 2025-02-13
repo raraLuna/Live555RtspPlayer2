@@ -14,7 +14,13 @@ struct VideoCodecUtils {
     static let NAL_SPS: UInt8 = 7
     static let NAL_PPS: UInt8 = 8
     static let NAL_AUD: UInt8 = 9
+    static let NAL_STAP_A: UInt8 = 24
+    static let NAL_STAP_B: UInt8 = 25
+    static let NAL_MTAP16: UInt8 = 26
+    static let NAL_MTAP24: UInt8 = 27
     static let NAL_FU_A: UInt8 = 28
+    static let NAL_FU_B: UInt8 = 29
+
     
     static let H265_NAL_IDR_W_RADL: UInt8 = 19
     static let H265_NAL_IDR_N_LP: UInt8 = 20

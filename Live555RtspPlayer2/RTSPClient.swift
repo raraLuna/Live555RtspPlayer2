@@ -305,21 +305,28 @@ extension RTSPClient {
                 
                 print("RTP buffer : \(rtpBuffer)")
                 let rtpHeader = self.readHeader(from: rtpBuffer, packetSize: lengthInt)
+                let rtpPacket = Array(rtpBuffer[12...])
                 
-                print("...DECODING...")
-                let h264Frame = processH264RtpPacket(rtpBuffer)
-                print("Decoded H.264 frame: \(h264Frame.count) bytes")
-
-                let decoder = H264Decoder()
-                if h264Frame.count != 0 {
-                    decoder.decode(nalData: Data(h264Frame))
-                } else {
-                    let aacFrame = processAacRtpPacket(rtpBuffer)
-                    print("Decoded AAC frame: \(aacFrame.count) bytes")
+                print("......RTP Parsing......")
+                //let h264Frame = processH264RtpPacket(rtpBuffer)
+                //print("Decoded H.264 frame: \(h264Frame.count) bytes")
+                
+                let rtpH264Parser = RtpH264Parser()
+                if rtpPacket.count != 0 {
+                    let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
+                    if nalUnit.count != 0 {
+                        print("rtpH264Parser result nalUnit: \(nalUnit)")
+                    }
                 }
-                
-                
-                
+
+//                let decoder = H264Decoder()
+//                if h264Frame.count != 0 {
+//                    decoder.decode(nalData: Data(h264Frame))
+//                } else {
+//                    let aacFrame = processAacRtpPacket(rtpBuffer)
+//                    print("Decoded AAC frame: \(aacFrame.count) bytes")
+//                }
+
                 
             } else {
                 if oneByteBuffer[0] == 0x52 { //"R" 도착
@@ -1011,7 +1018,7 @@ extension RTSPClient {
     // 큰 크기의 NAL Unit(예: Key Frame)을 여러 개의 RTP 패킷으로 쪼개어 전송하는 경우
     func handleFuA(_ payload: [UInt8]) -> [UInt8] {
         let fuIndicator = payload[0] // FU Indicator
-        let fuHeader = payload[1] // FU Indicator
+        let fuHeader = payload[1] // FU Header
         let startBit = (fuHeader & 0x80) != 0
         //let endBit = (fuHeader & 0x40) != 0
         let nalType = fuHeader & 0x1F
