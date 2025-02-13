@@ -35,6 +35,7 @@ class H264Decoder {
     // H.264 NAL Unit 처리 함수
     func decode(nalData: Data) {
         let nalType = nalData[0] & 0x1F // NAL Unit Type 추출
+        print("nalData[0]: \(nalData[0])")
         print("NAL Type: \(nalType)")
         
         switch nalType {
