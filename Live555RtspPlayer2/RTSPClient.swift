@@ -308,6 +308,7 @@ extension RTSPClient {
                 let rtpPacket = Array(rtpBuffer[12...])
                 
                 print("......RTP Parsing......")
+                print("encodeType: \(self.encodeType)")
                 //let h264Frame = processH264RtpPacket(rtpBuffer)
                 //print("Decoded H.264 frame: \(h264Frame.count) bytes")
                 if self.encodeType == "h264" {
@@ -316,6 +317,14 @@ extension RTSPClient {
                         let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
                         if nalUnit.count != 0 {
                             print("rtpH264Parser result nalUnit: \(nalUnit)")
+                        }
+                    }
+                } else if self.encodeType == "h265" {
+                    let rtpH265Parser = RtpH265Parser()
+                    if rtpPacket.count != 0 {
+                        let nalUnit = rtpH265Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
+                        if nalUnit.count != 0 {
+                            print("rtpH265Parser result nalUnit: \(nalUnit)")
                         }
                     }
                 }
@@ -511,7 +520,7 @@ extension RTSPClient {
                                 print("Unknown video codec \(codecDetails[0])")
                             }
 
-                            let type = videoTrack.videoCodec == 0 ? "h264" : " h265"
+                            let type = videoTrack.videoCodec == 0 ? "h264" : "h265"
                             self.encodeType = type
 //                            self.videoHz = Int(codecDetails[1].lowercased()) ?? 0
 //                            print("Video: \(self.encodeType)")

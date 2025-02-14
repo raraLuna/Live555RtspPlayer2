@@ -89,13 +89,23 @@ class ViewController: UIViewController {
                 let track: Track = ((i == 0 ? sdpInfo.videoTrack : sdpInfo.audioTrack) ?? Track())
                 //uriRtspSetup = rtspClient.getUriForSetup(uriRtsp: self.url, track: track)
                 if i == 0  {
-                    interleaved = "0-1"
-                    uriRtspSetupVideo = rtspClient.getUriForSetup(uriRtsp: self.url, track: track)
-                    rtspClient.sendSetup(trackURL: uriRtspSetupVideo, interleaved: interleaved)
+                    if sdpInfo.videoTrack != nil {
+                        interleaved = "0-1"
+                        uriRtspSetupVideo = rtspClient.getUriForSetup(uriRtsp: self.url, track: track)
+                        rtspClient.sendSetup(trackURL: uriRtspSetupVideo, interleaved: interleaved)
+                    } else {
+                        print("Video track not found in SDP")
+                        continue
+                    }
                 } else  {
-                    interleaved = "2-3"
-                    uriRtspSetupAudio = rtspClient.getUriForSetup(uriRtsp: self.url, track: track)
-                    rtspClient.sendSetup(trackURL: uriRtspSetupAudio, interleaved: interleaved)
+                    if sdpInfo.audioTrack != nil {
+                        interleaved = "2-3"
+                        uriRtspSetupAudio = rtspClient.getUriForSetup(uriRtsp: self.url, track: track)
+                        rtspClient.sendSetup(trackURL: uriRtspSetupAudio, interleaved: interleaved)
+                    } else {
+                        print("Audio track not found in SDP")
+                        break
+                    }
                 }
                 
                 //rtspClient.sendSetup(trackURL: uriRtspSetup, interleaved: interleaved)
