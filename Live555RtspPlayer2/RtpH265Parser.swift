@@ -15,6 +15,7 @@ class RtpH265Parser: RtpParser {
         print("processRtpPacketAndGetNalUnit(data.size=\(data.count), length=\(length), marker=\(marker))")
         
         let nalType = (data[0] >> 1) & 0x3F
+        print("nalType=\(nalType)")
         var nalUnit: [UInt8] = []
         
         if nalType < RTP_PACKET_TYPE_AP {
@@ -57,14 +58,22 @@ class RtpH265Parser: RtpParser {
         RtpParser.fragmentedBufferLength = length - 1
         RtpParser.fragmentedBuffer[0] = [UInt8](repeating: 0, count: RtpParser.fragmentedBufferLength)
         
+        // tid: Temporal ID : 시간적 계층 ID
         let tid = data[1] & 0x07
         let fuHeader = data[2]
-        let nalUnitType = fuHeader & 0x3F
+        let nalUnitType = fuHeader & 0x3F // fuHeader의 하위 6bit가 nal unit type
+        
+        print("tid: \(tid)")
+        print("fuHeader: \(fuHeader)")
+        print("nalUnitType: \(nalUnitType)")
             
         // Convert RTP Header into HEVC NAL Unit header according to RFC7798 Section 1.1.4
-        RtpParser.fragmentedBuffer[0]?[0] = (nalUnitType << 1) & 0x7F
-        RtpParser.fragmentedBuffer[0]?[1] = tid
+        // RTP Pack의 첫번째 바이트(data[0]은 h265에서 필요 없으므로 무시
+        RtpParser.fragmentedBuffer[0]?[0] = (nalUnitType << 1) & 0x7F // h265 헤더에 맞게 변환
+        RtpParser.fragmentedBuffer[0]?[1] = tid // tid 값 저장
+        // HEVC NAL Unit Header 결과: [변환된 NAL Unit Type, TID]
         
+        // RTP 패킷의 3번째 바이트부터 끝까지를 fragmentedBuffer의 2바이트 이후에 저장 (실제 payload 저장)
         RtpParser.fragmentedBuffer[0]?.replaceSubrange(2..., with: data[3..<length])
     }
     
@@ -101,7 +110,7 @@ class RtpH265Parser: RtpParser {
             }
         }
         
-        // Write and packet
+        // Write end packet
         nalUnit.replaceSubrange(tmpLen..<tmpLen + (length - 3), with: data[3..<length])
         clearFragmentedBuffer()
         

@@ -97,10 +97,13 @@ class RtpH264Parser: RtpParser {
             return []
         }
         
+        // 최종 NAL 크기 결정 (NAL prefix 0,0,0,1 포함)
         var nalUnit = [UInt8](Data(count:RtpParser.fragmentedBufferLength + length + 2))
         writeNalPrefix0001(to: &nalUnit)
         
-        var tmpLen = 4
+        var tmpLen = 4 // prefix 길이
+        
+        // 모든 조각 모음
         for i in 0..<RtpParser.fragmentedPackets {
             if let fragment = RtpParser.fragmentedBuffer[i] {
                 nalUnit.replaceSubrange(tmpLen..<(tmpLen + fragment.count), with: fragment)
@@ -108,6 +111,7 @@ class RtpH264Parser: RtpParser {
             }
         }
         
+        // 마지막 packe의 payload 저장
         nalUnit.replaceSubrange(tmpLen..<(tmpLen + length - 2), with: data[2..<length])
         clearFragmentedBuffer()
         
