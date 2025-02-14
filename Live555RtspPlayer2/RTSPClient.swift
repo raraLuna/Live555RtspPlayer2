@@ -92,7 +92,7 @@ class RTSPClient {
     
     private let RTP_HEADER_SIZE = 12
     
-    //private var encodeType : EncodeType = EncodeType.h264
+    private var encodeType = ""
     private var videoHz = 0
     private var previousTimestamp: UInt32 = 0
     private var estimatedFPS: UInt32 = 0
@@ -310,12 +310,13 @@ extension RTSPClient {
                 print("......RTP Parsing......")
                 //let h264Frame = processH264RtpPacket(rtpBuffer)
                 //print("Decoded H.264 frame: \(h264Frame.count) bytes")
-                
-                let rtpH264Parser = RtpH264Parser()
-                if rtpPacket.count != 0 {
-                    let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
-                    if nalUnit.count != 0 {
-                        print("rtpH264Parser result nalUnit: \(nalUnit)")
+                if self.encodeType == "h264" {
+                    let rtpH264Parser = RtpH264Parser()
+                    if rtpPacket.count != 0 {
+                        let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
+                        if nalUnit.count != 0 {
+                            print("rtpH264Parser result nalUnit: \(nalUnit)")
+                        }
                     }
                 }
 
@@ -510,8 +511,8 @@ extension RTSPClient {
                                 print("Unknown video codec \(codecDetails[0])")
                             }
 
-//                            let type = videoTrack.videoCodec == 0 ? EncodeType.h264 : EncodeType.h265
-//                            self.encodeType = type
+                            let type = videoTrack.videoCodec == 0 ? "h264" : " h265"
+                            self.encodeType = type
 //                            self.videoHz = Int(codecDetails[1].lowercased()) ?? 0
 //                            print("Video: \(self.encodeType)")
                             print("fps: \(self.videoHz)")
