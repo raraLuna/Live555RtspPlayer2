@@ -9,11 +9,13 @@ import UIKit
 
 class ViewController: UIViewController {
     @IBOutlet var startRtspBtn: UIView!
+    @IBOutlet weak var stopRtspBtn: UIButton!
     
     var urlHost: String = ""
     var urlPort: Int = 0
     var urlPath: String = ""
     var url: String = ""
+    var rtspSession: String = ""
     
     //let backgroundQueue = DispatchQueue(label: "com.olivendove.backgroundQueue", qos: .background)
     
@@ -21,7 +23,7 @@ class ViewController: UIViewController {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
         //let rtspUrl = "rtsp://192.168.0.50:554/test.264"
-        let rtspUrl = "rtsp://192.168.0.50:554/SampleVideo_1280x720_30mb_h265_AAC.mkv"
+        let rtspUrl = "rtsp://192.168.0.50:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
         guard let components = URLComponents(string: rtspUrl) else {
             print("Failed to parse RTSP URL")
             return
@@ -42,6 +44,23 @@ class ViewController: UIViewController {
     
     @IBAction func startRtspHandShake(_ sender: Any) {
         self.startRTSP()
+    }
+    
+    @IBAction func stopRtsp(_ sender: Any) {
+        DispatchQueue.global(qos: .background).async {
+            let rtspClient = RTSPClient(serverAddress: self.urlHost, serverPort: UInt16(self.urlPort), serverPath: self.urlPath, url: self.url)
+            if !rtspClient.connect() {
+                return
+            }
+            rtspClient.sendTearDown(url: self.url, session: self.rtspSession)
+            let tearDownResponse = rtspClient.readResponse()
+            print("tearDownResponse: \(tearDownResponse)")
+            
+            guard rtspClient.readResponseStatusCode(response: tearDownResponse) == 200 else {
+                return
+            }
+            rtspClient.closeConnection()
+        }
     }
     
     private func startRTSP() {
@@ -126,12 +145,10 @@ class ViewController: UIViewController {
                 }
 
             }
+            self.rtspSession = sessionVideo
             rtspClient.sendPlay(url: self.url, session: sessionVideo)
             
-            //rtspClient.startReceiving()
             rtspClient.startReceivingData()
-            //rtspClient.startParsingData()
-            
         }
     }
 }
