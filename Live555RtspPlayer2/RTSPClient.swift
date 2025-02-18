@@ -620,7 +620,7 @@ extension RTSPClient {
         }
         
         for param in params {
-            if param.0.lowercased() == "scrop-parameter-sets" {
+            if param.0.lowercased() == "sprop-parameter-sets" {
                 let paramsSpsPps = param.1.split(separator: ",")
                 if paramsSpsPps.count > 1 {
                     // Decoding Base64
@@ -640,6 +640,7 @@ extension RTSPClient {
                     // Setting VideoTrack
                     videoTrack.sps = nalSps
                     videoTrack.pps = nalPps
+                    print("SPS: \(videoTrack.sps), PPS: \(videoTrack.pps)")
                 }
             }
         }
