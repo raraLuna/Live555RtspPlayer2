@@ -91,8 +91,8 @@ class RTSPClient {
     private let dataAvailable = DispatchSemaphore(value: 0) // 데이터 사용 신호
     
     private var audioMode: String = ""
-    private var sdpAudioPT: Int = 0
-    private var sdpVideoPT: Int = 0
+    //private var sdpAudioPT: Int = 0
+    //private var sdpVideoPT: Int = 0
     
     private let RTP_HEADER_SIZE = 12
     
@@ -273,7 +273,8 @@ class RTSPClient {
 }
 
 extension RTSPClient {
-    func startReceivingData() {
+    func startReceivingData(sdpInfo: SdpInfo) {
+        
         while true {
             // 1byte 만큼 데이터 읽기
             var oneByteBuffer = [UInt8](repeating: 0, count: 1)
@@ -315,18 +316,20 @@ extension RTSPClient {
                 //print("payloadType: \(payloadType)")
                 if payloadType >= 96 && payloadType <= 127 {
                     print("This is Dynamic payload type. Need SDP Information")
-                    print("Sdp video payload: \(self.sdpVideoPT), Sdp audio payload: \(self.sdpAudioPT)")
-                    if rtpHeader.payloadType == self.sdpVideoPT {
-                        self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket)
-                    } else if rtpHeader.payloadType == sdpAudioPT {
-                        self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket)
+                    //print("Sdp video payload: \(self.sdpVideoPT), Sdp audio payload: \(self.sdpAudioPT)")
+                    print("spdInfo.videoTrack.payloadType: \(String(describing: sdpInfo.videoTrack?.payloadType))")
+                    print("spdInfo.audioTrack.payloadType: \(String(describing: sdpInfo.audioTrack?.payloadType))")
+                    if rtpHeader.payloadType == sdpInfo.videoTrack?.payloadType {
+                        self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
+                    } else if rtpHeader.payloadType == sdpInfo.audioTrack?.payloadType {
+                        self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                     }
                 } else if payloadType == 0 || payloadType == 8  {
                     print("Audio RTP Packet detected")
-                    self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket)
+                    self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                 } else if payloadType == 96 || payloadType == 97 {
                     print("Video RTP Packet detected")
-                    self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket)
+                    self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                 } else {
                     print("Unknown RTP Packet detected")
                 }
@@ -383,15 +386,36 @@ extension RTSPClient {
         }
     }
     
-    func parseVideo(rtpHeader: RtpHeader, rtpPacket: [UInt8]) {
+    func parseVideo(rtpHeader: RtpHeader, rtpPacket: [UInt8], sdpInfo: SdpInfo) {
         print("......Video RTP Parsing......")
         print("encodeType: \(self.encodeType)")
+        var nalUnitSps = [UInt8](sdpInfo.videoTrack?.sps ?? Data())
+        var nalUnitPps = [UInt8](sdpInfo.videoTrack?.pps ?? Data())
+        //print("nalUnitSps: \(nalUnitSps)\nnalUnitPps: \(nalUnitPps)")
+        
         if self.encodeType == "h264" {
             let rtpH264Parser = RtpH264Parser()
             if rtpPacket.count != 0 {
                 let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
                 if nalUnit.count != 0 {
                     print("rtpH264Parser result nalUnit: \(nalUnit)")
+                    let type = VideoCodecUtils.getNalUnitType(data: nalUnit, offset: 0, length: nalUnit.count, isH265: false)
+                    //print("nalUnite Type: \(type)")
+                    switch type {
+                    case VideoCodecUtils.NAL_SPS: // 7
+                        print("Video Nal Unit Type is SPS (\(type))")
+                    case VideoCodecUtils.NAL_PPS: // 8
+                        print( "Video Nal Unit Type is PPS (\(type))")
+                    case VideoCodecUtils.NAL_IDR_SLICE: // 5
+                        print( "Video Nal Unit Type is IDR Slice (\(type))")
+                        let unitSpsPps = nalUnitSps + nalUnitPps
+                        print("unitSpsPps: \(unitSpsPps)")
+                        nalUnitSps = []
+                        nalUnitPps = []
+                    default:
+                        print("Video Nal Unit Type is \(type)")
+                        
+                    }
                 }
             }
         } else if self.encodeType == "h265" {
@@ -405,7 +429,7 @@ extension RTSPClient {
         }
     }
     
-    func parseAudio(rtpHeader: RtpHeader, rtpPacket: [UInt8]) {
+    func parseAudio(rtpHeader: RtpHeader, rtpPacket: [UInt8], sdpInfo: SdpInfo) {
         print("......Audio RTP Parsing......")
         let aacParser = AacParser(aacMode: self.audioMode)
         if rtpPacket.count != 0 {
@@ -582,8 +606,8 @@ extension RTSPClient {
                             self.encodeType = type
                             
                             let payloadType = Int(values[0].split(separator: ":")[1])
-                            print("SDP video payload type: \(String(describing: payloadType))")
-                            self.sdpVideoPT = payloadType ?? 0
+//                            print("SDP video payload type: \(String(describing: payloadType))")
+//                            self.sdpVideoPT = payloadType ?? 0
 //                            self.videoHz = Int(codecDetails[1].lowercased()) ?? 0
 //                            print("Video: \(self.encodeType)")
                             //print("fps: \(self.videoHz)")
@@ -599,8 +623,8 @@ extension RTSPClient {
                             audioTrack.sampleRateHz = Int(codecDetails[1]) ?? 0
                             audioTrack.channels = codecDetails.count > 2 ? Int(codecDetails[2]) ?? 1 : 1
                             let payloadType = Int(values[0].split(separator: ":")[1])
-                            print("SDP audio payload type: \(String(describing: payloadType))")
-                            self.sdpAudioPT = payloadType ?? 0
+//                            print("SDP audio payload type: \(String(describing: payloadType))")
+//                            self.sdpAudioPT = payloadType ?? 0
                             
                             print("Audio: \(audioTrack.audioCodec), sample rate: \(audioTrack.sampleRateHz) Hz, channels: \(audioTrack.channels)")
                             
@@ -640,7 +664,7 @@ extension RTSPClient {
                     // Setting VideoTrack
                     videoTrack.sps = nalSps
                     videoTrack.pps = nalPps
-                    print("SPS: \(videoTrack.sps), PPS: \(videoTrack.pps)")
+                    //print("SPS: \(String(describing: videoTrack.sps)), PPS: \(String(describing: videoTrack.pps))")
                 }
             }
         }
@@ -684,7 +708,7 @@ extension RTSPClient {
         return bytes
     }
     
-    //maek SdpInfo object from sdp information
+    //make SdpInfo object from sdp information
     func getSdpInfoFromDescribeParams(params: [(String, String)]) -> SdpInfo {
         var sdpInfo = SdpInfo()
         let tracks = getTrackFromDescribeParams(params: params)

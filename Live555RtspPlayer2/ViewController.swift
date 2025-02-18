@@ -96,6 +96,9 @@ class ViewController: UIViewController {
             if contentLength > 0 {
                 let params = rtspClient.getDescribeParams(response: describeResponse)
                 sdpInfo = rtspClient.getSdpInfoFromDescribeParams(params: params)
+                print("sdpInfo: \(sdpInfo)")
+                print("SPS: \([UInt8](sdpInfo.videoTrack?.sps ?? Data()))")
+                print("PPS: \([UInt8](sdpInfo.videoTrack?.pps ?? Data()))")
             }
             
             var sessionVideo = ""
@@ -150,7 +153,7 @@ class ViewController: UIViewController {
             self.rtspSession = sessionVideo
             rtspClient.sendPlay(url: self.url, session: sessionVideo)
             
-            rtspClient.startReceivingData()
+            rtspClient.startReceivingData(sdpInfo: sdpInfo)
         }
     }
 }

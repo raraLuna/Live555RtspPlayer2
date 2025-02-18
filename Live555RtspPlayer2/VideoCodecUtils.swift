@@ -46,12 +46,13 @@ struct VideoCodecUtils {
         var nalUnitTypeOffset = -1
         if data[offset + NAL_PREFIX2.count - 1] == 1 {
             nalUnitTypeOffset = offset + NAL_PREFIX2.count
-        } else if data[offset + NAL_PREFIX1.count] == 1 {
+        } else if data[offset + NAL_PREFIX1.count - 1] == 1 {
             nalUnitTypeOffset = offset + NAL_PREFIX1.count
         }
-        
+        print("nalUnitTypeOffset: \(nalUnitTypeOffset)")
         guard nalUnitTypeOffset != -1 else { return 255 }
         let nalUnitTypeOctet = data[nalUnitTypeOffset]
+        print("nalUnitTypeOctet: \(nalUnitTypeOctet)")
         
         return isH265 ? ((nalUnitTypeOctet >> 1) & 0x3F) : (nalUnitTypeOctet & 0x1F)
     }
