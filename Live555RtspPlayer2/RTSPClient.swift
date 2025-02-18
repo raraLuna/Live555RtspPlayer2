@@ -312,7 +312,7 @@ extension RTSPClient {
                 let rtpPacket = Array(rtpBuffer[12...])
                 
                 let payloadType = rtpHeader.payloadType
-                print("payloadType: \(payloadType)")
+                //print("payloadType: \(payloadType)")
                 if payloadType >= 96 && payloadType <= 127 {
                     print("This is Dynamic payload type. Need SDP Information")
                     print("Sdp video payload: \(self.sdpVideoPT), Sdp audio payload: \(self.sdpAudioPT)")
@@ -417,6 +417,7 @@ extension RTSPClient {
     }
     
     // inout : 메모리 참조 변수
+    //         상수 파라미터를 변수로 사용할 때 inout 사용. (copy in, copy out, 매개변수 복사하여 값 변경 후 다시 원본 변수에 재할당)
     // offset : 데이터를 저장할 버퍼의 시작 위치
     // length : 읽어야 하는 데이터 길이
     func readData(socket: Int32, buffer: inout [UInt8], offset: Int, length: Int) -> Int {
