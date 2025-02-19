@@ -389,14 +389,25 @@ extension RTSPClient {
     func parseVideo(rtpHeader: RtpHeader, rtpPacket: [UInt8], sdpInfo: SdpInfo) {
         print("......Video RTP Parsing......")
         print("encodeType: \(self.encodeType)")
-        var nalUnitSps = [UInt8](sdpInfo.videoTrack?.sps ?? Data())
-        var nalUnitPps = [UInt8](sdpInfo.videoTrack?.pps ?? Data())
+        let nalUnitSps = [UInt8](sdpInfo.videoTrack?.sps ?? Data())
+        let nalUnitPps = [UInt8](sdpInfo.videoTrack?.pps ?? Data())
         //print("nalUnitSps: \(nalUnitSps)\nnalUnitPps: \(nalUnitPps)")
+        
+        let h264Decoder = H264Decoder()
+        
+
         
         if self.encodeType == "h264" {
             let rtpH264Parser = RtpH264Parser()
             if rtpPacket.count != 0 {
                 let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
+                if nalUnit.count != 0 {
+                    print("rtpH264Parser result nalUnit: \(nalUnit)")
+                    h264Decoder.decode(nalData: Data(nalUnitSps))
+                    h264Decoder.decode(nalData: Data(nalUnitPps))
+                    h264Decoder.decode(nalData: Data(nalUnit))
+                }
+                /*
                 if nalUnit.count != 0 {
                     print("rtpH264Parser result nalUnit: \(nalUnit)")
                     let type = VideoCodecUtils.getNalUnitType(data: nalUnit, offset: 0, length: nalUnit.count, isH265: false)
@@ -417,6 +428,7 @@ extension RTSPClient {
                         
                     }
                 }
+                */
             }
         } else if self.encodeType == "h265" {
             let rtpH265Parser = RtpH265Parser()
@@ -656,9 +668,11 @@ extension RTSPClient {
                     
                     // Add NAL Unit header
                     var nalSps = Data([0x00, 0x00, 0x00, 0x01]) // 00 00 00 01
+                    //var nalSps = Data()
                     nalSps.append(sps)
                     
                     var nalPps = Data([0x00, 0x00, 0x00, 0x01]) // 00 00 00 01
+                    //var nalPps = Data()
                     nalPps.append(pps)
                     
                     // Setting VideoTrack

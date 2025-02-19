@@ -33,6 +33,8 @@ class RtpParser {
         var nalUnit = [UInt8](repeating: 0, count: 4 + length)
         writeNalPrefix0001(to: &nalUnit)
         nalUnit.replaceSubrange(4..<nalUnit.count, with: data.prefix(length))
+        //var nalUnit = [UInt8](repeating: 0, count: length)
+        //nalUnit.replaceSubrange(0..<nalUnit.count, with: data.prefix(length))
         
         return nalUnit
     }

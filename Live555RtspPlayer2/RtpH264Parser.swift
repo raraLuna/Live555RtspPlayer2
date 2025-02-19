@@ -162,6 +162,27 @@ class RtpH264Parser: RtpParser {
         nalUnit.replaceSubrange(tmpLen..<(tmpLen + length - 2), with: data[2..<length])
         clearFragmentedBuffer()
         
+        
+        
+        /*
+        // 0 0 0 1 추가하지 않는 경우
+        var nalUnit = [UInt8](Data(count:RtpParser.fragmentedBufferLength + length - 2))
+        
+        var tmpLen = 0
+        
+        // 모든 조각 모음
+        for i in 0..<RtpParser.fragmentedPackets {
+            if let fragment = RtpParser.fragmentedBuffer[i] {
+                nalUnit.replaceSubrange(tmpLen..<(tmpLen + fragment.count), with: fragment)
+                tmpLen += fragment.count
+            }
+        }
+        
+        nalUnit.replaceSubrange(tmpLen..<(tmpLen + length - 2), with: data[2..<length])
+        clearFragmentedBuffer()
+         */
+        
+        
         print("Fragmented NAL (\(nalUnit.count))")
         return nalUnit
     }
