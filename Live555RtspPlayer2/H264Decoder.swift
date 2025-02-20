@@ -14,6 +14,8 @@ class H264Decoder {
     private var formatDescription: CMVideoFormatDescription?
     private var sps: Data?
     private var pps: Data?
+    private var frameIndex = 0
+    private var lastPTS = CMTime(value: 0, timescale: 30000)
     
     private let decompressionOutputCallback: VTDecompressionOutputCallback = { (
         decompressionOutputRefCon,
@@ -30,7 +32,7 @@ class H264Decoder {
         guard status == noErr, let imageBuffer = imageBuffer else {
             print("디코딩 된 이미지 버퍼 없음")
             print("디코딩 오류: status = \(status), imageBuffer = \(String(describing: imageBuffer))")
-            // -8969: kVTInvalidSessionErr 세션이 유효하지 않음
+            // -8969, -12902: kVTInvalidSessionErr 세션이 유효하지 않음
             // -12911: kVTVideoDecoderBadDataErr 잘못된 데이터
             // -12909: kVTParameterErr 잘못된 파라미터
             // -12633: kVTInvalidImageBufferErr 이미지 버퍼가 유효하지 않음
@@ -43,9 +45,9 @@ class H264Decoder {
     
     // H.264 NAL Unit 처리 함수
     func decode(nalData: Data) {
-        print("NAL Data (첫 16바이트): \(nalData.prefix(16).map { String(format: "%02X", $0) }.joined(separator: " "))")
+        print("NAL Data (첫 32바이트): \(nalData.prefix(32).map { String(format: "%02X", $0) }.joined(separator: " "))")
         let nalType = nalData[4] & 0x1F // NAL Unit Type 추출
-        print("nalData[0]: \(nalData[0])")
+        print("nalData: \(nalData[4])")
         print("NAL Type: \(nalType)")
         
         switch nalType {
@@ -55,8 +57,9 @@ class H264Decoder {
         case 8: // PPS (Picture Parameter Set)
             print("Received PPS")
             self.pps = nalData[4...]
-        case 5, 1: // I-Frame (IDR) 또는 P-Freme
+        case 5, 1: // I-Frame (IDR) 또는 P-Freme (첫 프레임은 5, 이후로는 1)
             print("Received Frame (I/P)")
+            print("Frame Index: \(frameIndex)")
             guard let sps = sps, let pps = pps else {
                 print("SPS/PPS 정보가 없습니다. 프레임을 디코딩 할 수 없습니다.")
                 return
@@ -69,7 +72,7 @@ class H264Decoder {
         
     }
     
-    // Decompression: 감압.
+    // Decompression: 감압. 압출 풀기
     // VTDecompressionSession 생성
     private func setupDecoder(sps: Data, pps: Data) {
         // 중복 초기화 방지 (formatDescription이 이미 설정되어 있는 경우 함수 종료)
@@ -102,6 +105,21 @@ class H264Decoder {
         print("CMVideoFormatDescription 생성 성공 \(status)")
         print("formatDescription: \(formatDescription)")
         
+        
+        // formatDescription 에서 avcC 데이터 추출하여 확인 (이 데이터가 SPS/PPS와 동일하다면 제대로 생성된 것)
+        // avcC의 구조:  01 [profile] [compatibility] [level] [flags] SPS_count SPS ... PPS_count PPS ...
+        // SPS_count: 0xE1(1개), PPS_count: 0x01(1개), 이후 데이터로 SPS/PPS가 일치해야함
+        if let extensions = CMFormatDescriptionGetExtensions(formatDescription) as? [String: Any],
+           let atoms = extensions["SampleDescriptionExtensionAtoms"] as? [String: Any],
+           let avcCData = atoms["avcC"] as? Data {
+            print("avcC Hex: \(avcCData.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        }
+        
+        // CMVideoFormatDescription 해상도 출력하여 SPS의 해상도와 일치하는지 확인
+        let width = CMVideoFormatDescriptionGetDimensions(formatDescription).width
+        let height = CMVideoFormatDescriptionGetDimensions(formatDescription).height
+        print("디코딩 해상도: \(width)x\(height)")
+        
         // 디코딩 완료 시 호출될 콜백 설정 (decompressionOutputCallback)
         // decompressionOutputRefCon: 객체의 참고를 UnsafeMutableRawPointer 로 변환하여 전달
         var outputCallback = VTDecompressionOutputCallbackRecord(
@@ -129,15 +147,15 @@ class H264Decoder {
         )
         
         if decompressionSession == nil {
-            print("디코딩 세션이 생성되지 않았습니다.")
+            print("decompressionSession이 생성되지 않았습니다.")
         } else {
-            print("디코딩 세션 생성 완료: \(String(describing: decompressionSession))")
+            print("decompressionSession 생성 완료: \(String(describing: decompressionSession))")
         }
         
         if statusSession != noErr {
-            print("VTDecompreesionSession 생성 실패: \(statusSession)")
+            print("VTDecompressionSession 생성 실패: \(statusSession)")
         } else {
-            print("VTDecompresionSession 생성 성공 \(statusSession)")
+            print("VTDecompressionSession 생성 성공 \(statusSession)")
         }
     }
     
@@ -146,13 +164,19 @@ class H264Decoder {
         // 세션이 존재하는지 확인
         guard let decompressionSession = self.decompressionSession,
               let formatDescription = self.formatDescription else {
-            print("디코딩 세션이 설정되지 않음")
+            print("decompressionSession이 설정되지 않음")
             return
         }
+        
+        //압축 해제 세션 무효화 함수
+        //VTDecompressionSessionInvalidate(decompressionSession)
         
         var blockBuffer: CMBlockBuffer?
         //let nalDataWithStartCode = Data([0x00, 0x00, 0x00, 0x01]) + nalData // start code 추가함
         let nalDataWithStartCode = nalData
+        print("nalData count: \(nalData.count)")
+//        var nalSize = CFSwapInt32HostToBig(UInt32(nalData.count - 4)) // NALU 길이를 4바이트로 변환
+//        var nalDataWithLengthPrefix = Data(bytes: &nalSize, count: 4) + nalData[4...]
         
         // NAL data를 CMBlockBuffer로 변환
         // memoryBlock: 원본 NAL Unit 데이터
@@ -161,7 +185,7 @@ class H264Decoder {
             allocator: kCFAllocatorDefault,
             memoryBlock: UnsafeMutableRawPointer(mutating: (nalDataWithStartCode as NSData).bytes),
             blockLength: nalDataWithStartCode.count,
-            blockAllocator: nil,
+            blockAllocator: kCFAllocatorNull,
             customBlockSource: nil,
             offsetToData: 0,
             dataLength: nalDataWithStartCode.count,
@@ -170,10 +194,18 @@ class H264Decoder {
         )
         
         guard statusBB == kCMBlockBufferNoErr, let blockBuffer = blockBuffer else {
-            print("CMBlockBuffer 생성 실패: \(statusBB)")
+            print("CMBlockBuffer 생성 실패: \(statusBB), \(String(describing: blockBuffer))")
             return
         }
-        print("CMBlockBuffer 생성 성공: \(statusBB)")
+        print("CMBlockBuffer 생성 성공: \(statusBB), \(String(describing: blockBuffer))")
+        print("CMBlockBuffer dataLength : \(blockBuffer.dataLength)")
+        
+        var sampleTimingInfo = CMSampleTimingInfo(
+            duration: CMTime(value: 1001, timescale: 30000),
+            presentationTimeStamp: getCorrectPTS(for: frameIndex),
+            decodeTimeStamp: CMTime.invalid
+        )
+        print("sampleTimingInfo: \(sampleTimingInfo)")
         
         // CMSammpleBuffer 생성(VTDecompressionSession에서 처리 가능하도록 변환)
         // dataBuffer: CMBlockBuffer(NAL Unit 포함)
@@ -186,18 +218,25 @@ class H264Decoder {
             dataBuffer: blockBuffer,
             formatDescription: formatDescription,
             sampleCount: 1,
-            sampleTimingEntryCount: 0,
-            sampleTimingArray: nil,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &sampleTimingInfo,
             sampleSizeEntryCount: 1,
             sampleSizeArray: &sampleSizeArray,
             sampleBufferOut: &sampleBuffer
         )
         
         guard statusSB == noErr, let sampleBuffer = sampleBuffer else {
-            print("CMSampleBuffer 생성 실패: \(statusSB)")
+            print("CMSampleBuffer 생성 실패: \(statusSB), \(String(describing: sampleBuffer))")
             return
         }
-        print("CMSampleBuffer 생성 성공: \(statusSB)")
+        print("CMSampleBuffer 생성 성공: \(statusSB), \(String(describing: sampleBuffer))")
+        print("CMSampleBuffer totalSampleSize : \(sampleBuffer.totalSampleSize)")
+        
+        // log에서 이 부분 수상함 >> outputPTS = {INVALID}(computed from PTS, duration and attachments)
+        // CMSampleBuffer 생성 시 presentationTimeStamp를 설정하지 않으면 기본값이 INVALID로 설정됨 >>> sampleTimingArray: &sampleTimingInfo 설정
+        // presentationTimeStamp: CMTime(value: 0, timescale: 0, flags: __C.CMTimeFlags(rawValue: 0), epoch: 0) : 잘못된 값
+        // 정상적인 PTS 값 예시: CMTime(value: 1001, timescale: 30000) (30fps)
+
         
         // 비디오 프레임 디코딩
         let statusDecode = VTDecompressionSessionDecodeFrame(
@@ -211,9 +250,56 @@ class H264Decoder {
         if statusDecode != noErr {
             print("decoding error: \(statusDecode)")
         }
-        print("decoding 성공 statusDecode : \(statusDecode)")
+        
+        frameIndex += 1
+        //print("decoding 성공 statusDecode : \(statusDecode)")
+    }
+    
+    func getCorrectPTS(for frameIndex: Int) -> CMTime {
+        let newPTS = CMTime(value: Int64(frameIndex * 1001), timescale: 30000)
+        if newPTS > lastPTS {
+            lastPTS = newPTS
+            return newPTS
+        } else {
+            return lastPTS + CMTime(value: 1001, timescale: 30000)
+        }
     }
 }
+
+
+
+
+
+
+
+
+//
+//let statusDecode = decompressionSession.decodeFrame(
+//    samplebuffer: sampleBuffer,
+//    outputHandler: { status, flags, imageBuffer, timeStamp, duration in
+//        if status == noErr, let imageBuffer = imageBuffer {
+//            print("Decoded frame: \(imageBuffer)")
+//        } else {
+//            print("Decoding error: \(status)")
+//        }
+//    }
+//)
+//
+//extension VTDecompressionSession {
+//    func decodeFrame(
+//        samplebuffer: CMSampleBuffer,
+//        flags: VTDecodeFrameFlags = [],
+//        outputHandler: @escaping VTDecompressionOutputHandler
+//    ) -> OSStatus {
+//        var infoFlags = VTDecodeInfoFlags.asynchronous
+//        return VTDecompressionSessionDecodeFrame(
+//            self, sampleBuffer: samplebuffer,
+//            flags: flags,
+//            infoFlagsOut: &infoFlags,
+//            outputHandler: outputHandler
+//        )
+//    }
+//}
 
 
 

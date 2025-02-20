@@ -101,6 +101,8 @@ class RTSPClient {
     private var previousTimestamp: UInt32 = 0
     private var estimatedFPS: UInt32 = 0
     
+    let h264Decoder = H264Decoder()
+    
     init(serverAddress: String, serverPort: UInt16 = 554, serverPath: String, url: String) {
         self.serverAddress = serverAddress
         self.serverPort = serverPort
@@ -393,7 +395,7 @@ extension RTSPClient {
         let nalUnitPps = [UInt8](sdpInfo.videoTrack?.pps ?? Data())
         //print("nalUnitSps: \(nalUnitSps)\nnalUnitPps: \(nalUnitPps)")
         
-        let h264Decoder = H264Decoder()
+        //let h264Decoder = H264Decoder()
         
 
         

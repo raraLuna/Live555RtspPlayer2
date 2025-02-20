@@ -23,8 +23,8 @@ class ViewController: UIViewController {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
         //let rtspUrl = "rtsp://192.168.0.50:554/test.264"
-        //let rtspUrl = "rtsp://192.168.0.50:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
-        let rtspUrl = "rtsp://192.168.0.74:554/TheSimpsonsMovie_1080x800_h264_AAC.mkv"
+        let rtspUrl = "rtsp://192.168.0.74:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
+        //let rtspUrl = "rtsp://192.168.0.74:554/TheSimpsonsMovie_1080x800_h264_AAC.mkv"
         //let rtspUrl = "rtsp://192.168.0.50:554/TheSimpsonsMovie_1080x800_h265_AAC.mkv"
         guard let components = URLComponents(string: rtspUrl) else {
             print("Failed to parse RTSP URL")
