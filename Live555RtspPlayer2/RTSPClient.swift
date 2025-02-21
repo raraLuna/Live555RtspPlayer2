@@ -265,6 +265,7 @@ class RTSPClient {
     func sendTearDown(url: String, session: String) {
         var request = ""
         request += "TEARDOWN \(url) RTSP/1.0\(self.CRLF)"
+        request += "Range: npt=0.000-\(self.CRLF)"
         request += "Session: \(session)\(self.CRLF)"
         request += "CSeq: \(self.cSeq)\(self.CRLF)"
         request += "\(self.CRLF)"
@@ -391,8 +392,8 @@ extension RTSPClient {
     func parseVideo(rtpHeader: RtpHeader, rtpPacket: [UInt8], sdpInfo: SdpInfo) {
         print("......Video RTP Parsing......")
         print("encodeType: \(self.encodeType)")
-        let nalUnitSps = [UInt8](sdpInfo.videoTrack?.sps ?? Data())
-        let nalUnitPps = [UInt8](sdpInfo.videoTrack?.pps ?? Data())
+        //let nalUnitSps = [UInt8](sdpInfo.videoTrack?.sps ?? Data())
+        //let nalUnitPps = [UInt8](sdpInfo.videoTrack?.pps ?? Data())
         //print("nalUnitSps: \(nalUnitSps)\nnalUnitPps: \(nalUnitPps)")
         
         //let h264Decoder = H264Decoder()
@@ -403,34 +404,42 @@ extension RTSPClient {
             let rtpH264Parser = RtpH264Parser()
             if rtpPacket.count != 0 {
                 let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
+//                if nalUnit.count != 0 {
+//                    print("rtpH264Parser result nalUnit: \(nalUnit)")
+//                    h264Decoder.decode(nalData: Data(nalUnitSps))
+//                    h264Decoder.decode(nalData: Data(nalUnitPps))
+//                    h264Decoder.decode(nalData: Data(nalUnit))
+//                }
+                var offset = 0
+                var prefixSize = 0
                 if nalUnit.count != 0 {
                     print("rtpH264Parser result nalUnit: \(nalUnit)")
-                    h264Decoder.decode(nalData: Data(nalUnitSps))
-                    h264Decoder.decode(nalData: Data(nalUnitPps))
-                    h264Decoder.decode(nalData: Data(nalUnit))
-                }
-                /*
-                if nalUnit.count != 0 {
-                    print("rtpH264Parser result nalUnit: \(nalUnit)")
-                    let type = VideoCodecUtils.getNalUnitType(data: nalUnit, offset: 0, length: nalUnit.count, isH265: false)
+                    //var type = VideoCodecUtils.getNalUnitType(data: nalUnit, offset: 0, length: nalUnit.count, isH265: false)
                     //print("nalUnite Type: \(type)")
-                    switch type {
-                    case VideoCodecUtils.NAL_SPS: // 7
-                        print("Video Nal Unit Type is SPS (\(type))")
-                    case VideoCodecUtils.NAL_PPS: // 8
-                        print( "Video Nal Unit Type is PPS (\(type))")
-                    case VideoCodecUtils.NAL_IDR_SLICE: // 5
-                        print( "Video Nal Unit Type is IDR Slice (\(type))")
-                        let unitSpsPps = nalUnitSps + nalUnitPps
-                        print("unitSpsPps: \(unitSpsPps)")
-                        nalUnitSps = []
-                        nalUnitPps = []
-                    default:
-                        print("Video Nal Unit Type is \(type)")
-                        
-                    }
+                    
+                    let nalUnitStart = VideoCodecUtils.searchForNalUnitStart(data: nalUnit, offset: offset, length: nalUnit.count, prefixSize: &prefixSize)
+                    print("nalUnitStart: \(nalUnitStart), prefixSize: \(prefixSize), nalUnit[\(offset + prefixSize)]: \(nalUnit[offset + prefixSize])")
+
+                    
+//                    switch type {
+//                    case VideoCodecUtils.NAL_SPS: // 7
+//                        print("Video Nal Unit Type is SPS (\(type))")
+//                    case VideoCodecUtils.NAL_PPS: // 8
+//                        print( "Video Nal Unit Type is PPS (\(type))")
+//                    case VideoCodecUtils.NAL_IDR_SLICE: // 5
+//                        print( "Video Nal Unit Type is IDR Slice (\(type))")
+//                        //let unitSpsPps = nalUnitSps + nalUnitPps
+//                        //print("unitSpsPps: \(unitSpsPps)")
+//                        //nalUnitSps = []
+//                        //nalUnitPps = []
+//                    case VideoCodecUtils.NAL_SLICE: // 1
+//                        print( "Video Nal Unit Type is Slice (\(type))")
+//                    default:
+//                        print("Video Nal Unit Type is \(type)")
+//                        
+//                    }
                 }
-                */
+                
             }
         } else if self.encodeType == "h265" {
             let rtpH265Parser = RtpH265Parser()
@@ -541,11 +550,19 @@ extension RTSPClient {
         
         for i in 0...headers.count-1 {
             if headers[i].0 == "Session" {
-                let sessionInfo = headers[i].1.split(separator: ";")
-                sessionString = String(sessionInfo[0])
-                sessionTimeout = String(sessionInfo[1].split(separator: "=")[1])
-                sessionInfoArr.append(sessionString)
-                sessionInfoArr.append(sessionTimeout)
+                if headers[i].1.contains(";") {
+                    let sessionInfo = headers[i].1.split(separator: ";")
+                    sessionString = String(sessionInfo[0])
+                    sessionTimeout = String(sessionInfo[1].split(separator: "=")[1])
+                    sessionInfoArr.append(sessionString)
+                    sessionInfoArr.append(sessionTimeout)
+                } else {
+                    let sessionInfo = headers[i].1.split(separator: " ")
+                    sessionString = String(sessionInfo[0])
+                    sessionTimeout = String(sessionInfo[1].split(separator: "=")[1])
+                    sessionInfoArr.append(sessionString)
+                    sessionInfoArr.append(sessionTimeout)
+                }
             }
         }
         

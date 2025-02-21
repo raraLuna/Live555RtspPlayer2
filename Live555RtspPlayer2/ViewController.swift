@@ -8,8 +8,20 @@
 import UIKit
 
 class ViewController: UIViewController {
+    @IBOutlet weak var loginBtn: UIButton!
     @IBOutlet var startRtspBtn: UIView!
     @IBOutlet weak var stopRtspBtn: UIButton!
+    
+    let wasUrl = WasApiInfo.URL_WAS_USA_DEV
+    let userId = "ymchoi@olivendove.com"
+    let password = "test531!"
+    let viewerId = "test531!"
+    let userAgent = "03"
+    let pushId = "test531!"
+    let camId = "100675"
+    var sessionId = ""
+    var memNo = ""
+    var rtspUrl = ""
     
     var urlHost: String = ""
     var urlPort: Int = 0
@@ -17,35 +29,181 @@ class ViewController: UIViewController {
     var url: String = ""
     var rtspSession: String = ""
     
-    //let backgroundQueue = DispatchQueue(label: "com.olivendove.backgroundQueue", qos: .background)
+    let backgroundQueue = DispatchQueue(label: "com.olivendove.backgroundQueue", qos: .background)
     
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
         //let rtspUrl = "rtsp://192.168.0.50:554/test.264"
-        let rtspUrl = "rtsp://192.168.0.74:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
+        //let rtspUrl = "rtsp://192.168.0.74:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
         //let rtspUrl = "rtsp://192.168.0.74:554/TheSimpsonsMovie_1080x800_h264_AAC.mkv"
         //let rtspUrl = "rtsp://192.168.0.50:554/TheSimpsonsMovie_1080x800_h265_AAC.mkv"
-        guard let components = URLComponents(string: rtspUrl) else {
-            print("Failed to parse RTSP URL")
-            return
+//        guard let components = URLComponents(string: rtspUrl) else {
+//            print("Failed to parse RTSP URL")
+//            return
+//        }
+//        guard let host = components.host, let port = components.port else {
+//            print("Failed to get host or port")
+//            return
+//        }
+//        let filePath = components.path
+//
+//        self.urlHost = host
+//        self.urlPort = port
+//        self.urlPath = filePath
+//        self.url = "rtsp://\(urlHost):\(urlPort)\(urlPath)"
+//        //print("rtspConnect host: \(self.urlHost), port: \(self.urlPort), path: \(self.urlPath)")
+//        print("connect to url: \(self.url)")
+    }
+    
+    func processError(apiError: ApiError) {
+        switch apiError {
+        case .invalidUrl:
+            NSLog("invalidUrl")
+        case .inputJsonDecodingError:
+            NSLog("inputJsonDecodingError")
+        case .nsUrlError(let error):
+            NSLog("nsUrlError: \(error)")
+        case .invalidHttpResponse:
+            NSLog("invalidHttpResponse")
+        case .httpError(let httpErrorcode):
+            NSLog("httpError: \(httpErrorcode)")
+        case .wasError(let wasErrorCode):
+            NSLog("wasError: \(wasErrorCode)")
+        case .noDataReceived:
+            NSLog("noDataReceived")
+        case .responseJsonDecodingError:
+            NSLog("responseJsonDecodingError")
         }
-        guard let host = components.host, let port = components.port else {
-            print("Failed to get host or port")
-            return
-        }
-        let filePath = components.path
-
-        self.urlHost = host
-        self.urlPort = port
-        self.urlPath = filePath
-        self.url = "rtsp://\(urlHost):\(urlPort)\(urlPath)"
-        //print("rtspConnect host: \(self.urlHost), port: \(self.urlPort), path: \(self.urlPath)")
-        print("connect to url: \(self.url)")
     }
     
     @IBAction func startRtspHandShake(_ sender: Any) {
         self.startRTSP()
+    }
+    
+    @IBAction func login(_ sender: Any) {
+        let id = userId
+        let pw = password
+        let viewerId = viewerId
+        let userAgent = userAgent
+        let pushId = pushId
+        
+        backgroundQueue.async {
+            WasApi.login(id: id, password: pw, viewerId: viewerId, userAgent: userAgent, pushId: pushId) { result in
+                switch result {
+                case .success(let response):
+                    print("Response: \(response)")
+                    self.sessionId = response.sessionId
+                    self.memNo = response.memNo
+                    NSLog("sessionId \(self.sessionId) memNo \(self.memNo)")
+                    self.reqVod()
+                case .failure(let apiError):
+                    print("ApiError: \(apiError)")
+                    self.processError(apiError: apiError)
+                }
+            }
+        }
+    }
+    
+    func reqVod() {
+        let sessionId = sessionId
+        let camId = camId
+
+        backgroundQueue.async {
+            WasApi.reqVod(sessionId: sessionId, camId: camId) { result in
+                switch result {
+                case .success(let response):
+                    print("Response: \(response)")
+                    NSLog("success reqVod")
+                    self.canBeStreaming(retryCount: 3)
+                case .failure(let apiError):
+                    print("ApiError: \(apiError)")
+                    self.processError(apiError: apiError)
+                }
+            }
+        }
+    }
+
+    func canBeStreaming(retryCount: Int = 0) {
+        let sessionId = sessionId
+        let memNo = memNo
+        let camId = camId
+
+        backgroundQueue.async {
+            WasApi.canBeStreaming(sessionId: sessionId, memNo: memNo, camId: camId) { result in
+                switch result {
+                case .success(let response):
+                    print("Response: \(response)")
+                    if response {
+                        NSLog("can be streaming")
+                        self.getStreamUrl()
+
+                    } else {
+                        NSLog("cannot be streaming")
+                        if retryCount > 0 {
+                            let count = retryCount - 1
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                self.canBeStreaming(retryCount: count)
+                            }
+                        }
+                    }
+                case .failure(let apiError):
+                    print("ApiError: \(apiError)")
+                    self.processError(apiError: apiError)
+                }
+            }
+        }
+    }
+
+    func getStreamUrl() {
+        let sessionId = sessionId
+        let camId = camId
+        
+        backgroundQueue.async {
+            WasApi.getStreamUrl(sessionId: sessionId, camId: camId) { result in
+                switch result {
+                case .success(let response):
+                    print("Response: \(response)")
+                    self.rtspUrl = response
+                    NSLog("rtspUrl \(self.rtspUrl)")
+                    guard let components = URLComponents(string: self.rtspUrl) else {
+                        print("Failed to parse RTSP URL")
+                        return
+                    }
+                    guard let host = components.host, let port = components.port else {
+                        print("Failed to get host or port")
+                        return
+                    }
+                    let filePath = components.path
+
+                    self.urlHost = host
+                    self.urlPort = port
+                    self.urlPath = filePath
+                    self.url = "rtsp://\(self.urlHost):\(self.urlPort)\(self.urlPath)"
+                    //print("rtspConnect host: \(self.urlHost), port: \(self.urlPort), path: \(self.urlPath)")
+                    print("connect to url: \(self.url)")
+                    
+                case .failure(let apiError):
+                    print("ApiError: \(apiError)")
+                    self.processError(apiError: apiError)
+                }
+            }
+        }
+    }
+
+    // MARK: RTSP
+    func getUriForSetup(uriRtsp: String, request: String) -> String {
+        var uriRtspSetup = uriRtsp
+        if request.starts(with: "rtsp://") || request.starts(with: "rtsps://") {
+           uriRtspSetup = request
+        } else {
+            if request.starts(with: "/") {
+                uriRtspSetup = uriRtspSetup + request
+            } else {
+                uriRtspSetup = uriRtspSetup + "/" + request
+            }
+        }
+        return uriRtspSetup
     }
     
     @IBAction func stopRtsp(_ sender: Any) {

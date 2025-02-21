@@ -32,17 +32,28 @@
                                     <action selector="stopRtsp:" destination="BYZ-38-t0r" eventType="touchUpInside" id="qRs-WJ-B7T"/>
                                 </connections>
                             </button>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="eXW-78-quL">
+                                <rect key="frame" x="163.66666666666666" y="171" width="66" height="35"/>
+                                <state key="normal" title="Button"/>
+                                <buttonConfiguration key="configuration" style="plain" title="Login"/>
+                                <connections>
+                                    <action selector="login:" destination="BYZ-38-t0r" eventType="touchUpInside" id="rDQ-Kv-oIH"/>
+                                </connections>
+                            </button>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
                         <color key="backgroundColor" systemColor="systemBackgroundColor"/>
                         <constraints>
+                            <constraint firstItem="gca-Mh-nYm" firstAttribute="top" secondItem="eXW-78-quL" secondAttribute="bottom" constant="58" id="7DZ-BJ-GRm"/>
                             <constraint firstItem="JI3-Ca-OfQ" firstAttribute="top" secondItem="gca-Mh-nYm" secondAttribute="bottom" constant="66" id="9qq-4h-RtW"/>
                             <constraint firstItem="gca-Mh-nYm" firstAttribute="top" secondItem="6Tk-OE-BBY" secondAttribute="top" constant="205" id="B6g-x8-aQX"/>
                             <constraint firstItem="gca-Mh-nYm" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="Kra-M1-0R8"/>
                             <constraint firstItem="JI3-Ca-OfQ" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="TcZ-yy-FuS"/>
+                            <constraint firstItem="eXW-78-quL" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="qNo-qA-hDa"/>
                         </constraints>
                     </view>
                     <connections>
+                        <outlet property="loginBtn" destination="eXW-78-quL" id="Um1-rg-AJl"/>
                         <outlet property="startRtspBtn" destination="8bC-Xf-vdC" id="As4-iJ-brF"/>
                         <outlet property="stopRtspBtn" destination="JI3-Ca-OfQ" id="ebK-Li-QIq"/>
                     </connections>
