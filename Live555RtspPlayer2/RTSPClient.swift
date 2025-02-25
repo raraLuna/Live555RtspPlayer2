@@ -89,6 +89,8 @@ class RTSPClient {
     private let dataQueue = DispatchQueue(label: "com.odc.dataQueue", attributes: .concurrent) // 동시성 제어용 Queue
     private let parsingDataQueue = DispatchQueue(label: "com.odc.parsingDataQueue", attributes: .concurrent)
     private let dataAvailable = DispatchSemaphore(value: 0) // 데이터 사용 신호
+    private var sps: [UInt8] = []
+    private var pps: [UInt8] = []
     
     private var audioMode: String = ""
     //private var sdpAudioPT: Int = 0
@@ -262,11 +264,11 @@ class RTSPClient {
         self.cSeq += 1
     }
     
-    func sendTearDown(url: String, session: String) {
+    func sendTearDown(url: String, session: String, userAgent: String) {
         var request = ""
         request += "TEARDOWN \(url) RTSP/1.0\(self.CRLF)"
-        request += "Range: npt=0.000-\(self.CRLF)"
         request += "Session: \(session)\(self.CRLF)"
+        request += "User-Agent: \(userAgent)\(self.CRLF)"
         request += "CSeq: \(self.cSeq)\(self.CRLF)"
         request += "\(self.CRLF)"
         
@@ -404,22 +406,68 @@ extension RTSPClient {
             let rtpH264Parser = RtpH264Parser()
             if rtpPacket.count != 0 {
                 let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
-//                if nalUnit.count != 0 {
-//                    print("rtpH264Parser result nalUnit: \(nalUnit)")
-//                    h264Decoder.decode(nalData: Data(nalUnitSps))
-//                    h264Decoder.decode(nalData: Data(nalUnitPps))
-//                    h264Decoder.decode(nalData: Data(nalUnit))
-//                }
-                var offset = 0
+
+                let offset = 0
+                var spsIndex = 0
+                var ppsIndex = 0
+                var nalDataIndex = 0
                 var prefixSize = 0
+                
                 if nalUnit.count != 0 {
                     print("rtpH264Parser result nalUnit: \(nalUnit)")
                     //var type = VideoCodecUtils.getNalUnitType(data: nalUnit, offset: 0, length: nalUnit.count, isH265: false)
                     //print("nalUnite Type: \(type)")
+                    var prefixCount = 0
+                    var nalUnitStart = VideoCodecUtils.searchForNalUnitStart(data: nalUnit, offset: offset, length: nalUnit.count, prefixSize: &prefixSize)
+                    prefixCount += 1
+                    spsIndex = offset + prefixSize
+                    print("nalUnitStart\(prefixCount): \(nalUnitStart), prefixSize: \(prefixSize), nalUnit[\(offset + prefixSize)]: \(nalUnit[offset + prefixSize])")
                     
-                    let nalUnitStart = VideoCodecUtils.searchForNalUnitStart(data: nalUnit, offset: offset, length: nalUnit.count, prefixSize: &prefixSize)
-                    print("nalUnitStart: \(nalUnitStart), prefixSize: \(prefixSize), nalUnit[\(offset + prefixSize)]: \(nalUnit[offset + prefixSize])")
+                    
+                    if nalUnit[spsIndex] == 103 { // SPS 발견
+                        //let nalUnit2 = Array(nalUnit[prefixSize..<nalUnit.count])
+                        //print("nalUnit2: \(nalUnit2)")
+                        
+                        for i in spsIndex..<(nalUnit.count - spsIndex) {
+                            if prefixCount == 3 {
+                                break
+                            }
+                            print("nalUnit[i..<i+3]: \(Array(nalUnit[i..<i+4]))")
+                            
+                            if Array(nalUnit[i..<i+4]) == [0, 0, 0, 1] {
+                                nalUnitStart = VideoCodecUtils.searchForNalUnitStart(data: Array(nalUnit[i...]), offset: offset, length: Array(nalUnit[i...]).count, prefixSize: &prefixSize)
+                                prefixCount += 1
+                                print("nalUnitStart\(prefixCount): \(nalUnitStart), prefixSize: \(prefixSize), nalUnit[\(i + prefixSize)]: \(nalUnit[i + prefixSize])")
+                                
+                                if nalUnit[i + prefixSize] == 104 { // PPS 발견
+                                    ppsIndex = i + prefixSize
+                                    if self.sps != Array(nalUnit[0..<(ppsIndex - 4)]) {
+                                        self.sps = Array(nalUnit[0..<(ppsIndex - 4)])
+                                    }
+                                    
+                                } else { // SPS, PPS 외의 0,0,0,1 발견 -> nalData
+                                    nalDataIndex = i + prefixSize
+                                    if self.pps != Array(nalUnit[self.sps.count..<(nalDataIndex - 4)]) {
+                                        self.pps  = Array(nalUnit[self.sps.count..<(nalDataIndex - 4)])
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    guard self.sps.count != 0 && self.pps.count != 0 else { return }
+                    print("sps nalUnit: \(self.sps)")
+                    print("pps nalUnit: \(self.pps)")
+                    print("nalUnit count: \(nalUnit.count)")
+                    h264Decoder.decode(nalData: Data(self.sps))
+                    h264Decoder.decode(nalData: Data(self.pps))
+                    if nalDataIndex != 0 {
+                        h264Decoder.decode(nalData: Data(nalUnit[nalDataIndex - 4..<nalUnit.count]))
+                    } else {
+                        h264Decoder.decode(nalData: Data(nalUnit))
+                    }
 
+                    
                     
 //                    switch type {
 //                    case VideoCodecUtils.NAL_SPS: // 7
@@ -1079,6 +1127,10 @@ extension RTSPClient {
         
         // TCP 에서는 처음 4바이트를 건너뛰고 읽어야함 (처음 4byte rtp header이므로..??)
         //_ = readData(socket: self.socket, buffer: &header, offset: 0, length: 4)
+        guard buffer.count >= RTP_HEADER_SIZE else {
+            print("buffer is too short to read RTP header")
+            return RtpHeader()
+        }
         header = Array(buffer[0 ..< RTP_HEADER_SIZE])
         print("RTP Packet Header: \(header)")
         print("packetSize: \(packetSize)")

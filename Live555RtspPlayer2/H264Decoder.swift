@@ -9,6 +9,17 @@ import Foundation
 import VideoToolbox
 import CoreVideo
 
+
+
+
+
+
+
+
+
+/*
+ 
+================================================================================================================================
 class H264Decoder {
     private var decompressionSession: VTDecompressionSession?
     private var formatDescription: CMVideoFormatDescription?
@@ -45,18 +56,18 @@ class H264Decoder {
     
     // H.264 NAL Unit 처리 함수
     func decode(nalData: Data) {
-        print("NAL Data (첫 32바이트): \(nalData.prefix(32).map { String(format: "%02X", $0) }.joined(separator: " "))")
+        print("decode NAL Data (첫 32바이트): \(nalData.prefix(32).map { String(format: "%02X", $0) }.joined(separator: " "))")
         let nalType = nalData[4] & 0x1F // NAL Unit Type 추출
-        print("nalData: \(nalData[4])")
-        print("NAL Type: \(nalType)")
+        print("decode nalData: \(nalData[4])")
+        print("decode NAL Type: \(nalType)")
         
         switch nalType {
         case 7: // SPS (Sequence Parameter Set)
             print("Received SPS")
-            self.sps = nalData[4...]
+            self.sps = nalData.dropFirst(4)
         case 8: // PPS (Picture Parameter Set)
             print("Received PPS")
-            self.pps = nalData[4...]
+            self.pps = nalData.dropFirst(4)
         case 5, 1: // I-Frame (IDR) 또는 P-Freme (첫 프레임은 5, 이후로는 1)
             print("Received Frame (I/P)")
             print("Frame Index: \(frameIndex)")
@@ -72,7 +83,7 @@ class H264Decoder {
         
     }
     
-    // Decompression: 감압. 압출 풀기
+    // Decompression: 감압. 압축 해제
     // VTDecompressionSession 생성
     private func setupDecoder(sps: Data, pps: Data) {
         // 중복 초기화 방지 (formatDescription이 이미 설정되어 있는 경우 함수 종료)
@@ -81,18 +92,31 @@ class H264Decoder {
         }
         
         // SPS, PPS 데이터를 UnsafePointer<UInt8>로 변환하여 사용
-        let parameterSetPointers: [UnsafePointer<UInt8>] = [
-            (sps as NSData).bytes.bindMemory(to: UInt8.self, capacity: sps.count),
-            (pps as NSData).bytes.bindMemory(to: UInt8.self, capacity: pps.count)
-        ]
-        let parameterSetSize: [Int] = [sps.count, pps.count]
+//        let parameterSetPointers: [UnsafePointer<UInt8>] = [
+//            (sps as NSData).bytes.bindMemory(to: UInt8.self, capacity: sps.count),
+//            (pps as NSData).bytes.bindMemory(to: UInt8.self, capacity: pps.count)
+//        ]
+//        let parameterSetSize: [Int] = [sps.count, pps.count]
+        let spsPointer = sps.withUnsafeBytes { $0.baseAddress!.assumingMemoryBound(to: UInt8.self) }
+        let ppsPointer = pps.withUnsafeBytes { $0.baseAddress!.assumingMemoryBound(to: UInt8.self) }
         
         // H.264의 SPS, PPS 데이터를 사용하여 CMFormatDescriptionRef 생성
+//        let status = CMVideoFormatDescriptionCreateFromH264ParameterSets(
+//            allocator: kCFAllocatorDefault,
+//            parameterSetCount: 2,
+//            parameterSetPointers: parameterSetPointers,
+//            parameterSetSizes: parameterSetSize,
+//            nalUnitHeaderLength: 4, // 4바이트 NAL 헤더 길이 (0x00 00 00 01)
+//            formatDescriptionOut: &formatDescription
+//        )
+        
+        // CMFormatDescription 생성
+        // Creates a format description for a video media stream that the parameter set describes.
         let status = CMVideoFormatDescriptionCreateFromH264ParameterSets(
             allocator: kCFAllocatorDefault,
             parameterSetCount: 2,
-            parameterSetPointers: parameterSetPointers,
-            parameterSetSizes: parameterSetSize,
+            parameterSetPointers: [spsPointer, ppsPointer],
+            parameterSetSizes: [sps.count, pps.count],
             nalUnitHeaderLength: 4, // 4바이트 NAL 헤더 길이 (0x00 00 00 01)
             formatDescriptionOut: &formatDescription
         )
@@ -120,27 +144,51 @@ class H264Decoder {
         let height = CMVideoFormatDescriptionGetDimensions(formatDescription).height
         print("디코딩 해상도: \(width)x\(height)")
         
+        // 콜백 초기화
+        var outputCallback = VTDecompressionOutputCallbackRecord()
+        outputCallback.decompressionOutputCallback = nil
+        
         // 디코딩 완료 시 호출될 콜백 설정 (decompressionOutputCallback)
         // decompressionOutputRefCon: 객체의 참고를 UnsafeMutableRawPointer 로 변환하여 전달
-        var outputCallback = VTDecompressionOutputCallbackRecord(
+        outputCallback = VTDecompressionOutputCallbackRecord(
             decompressionOutputCallback: decompressionOutputCallback,
             decompressionOutputRefCon: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         )
         
+        let decoderParameters = NSMutableDictionary()
+        
         // 디코딩 된 이미지 속 버퍼 속성 설정
         // kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: YUV 4:2:0 format
+//        let attributes: [NSString: Any] = [
+//            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+//            kCVPixelBufferWidthKey: formatDescription.dimensions.width,
+//            kCVPixelBufferHeightKey: formatDescription.dimensions.height
+//        ]
+//        print("attributes as CFDictionary: \(attributes as CFDictionary)")
+//        let pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange // NV12
+        
+//        let attributes: [NSString: Any] = [
+//            kCVPixelBufferPixelFormatTypeKey : NSNumber(value: pixelFormat),
+//            kCVPixelBufferIOSurfacePropertiesKey: [:] as  AnyObject,
+//            kCVPixelBufferOpenGLESCompatibilityKey: NSNumber(booleanLiteral: true)
+//        ]
         let attributes: [NSString: Any] = [
-            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-            kCVPixelBufferWidthKey: formatDescription.dimensions.width,
-            kCVPixelBufferHeightKey: formatDescription.dimensions.height
+            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange as UInt32,
+            kCVPixelBufferIOSurfacePropertiesKey: [:]
         ]
-        print("attributes as CFDictionary: \(attributes as CFDictionary)")
+        
+        // DecompressionSession 초기화
+        if let session = decompressionSession {
+            VTDecompressionSessionInvalidate(session)
+            decompressionSession = nil
+        }
         
         // VTDecompressionSession 생성
+        // videoDecoderSpecification: The particular video decoder that must be used. Pass NULL to let VideoToolbox choose a decoder.
         let statusSession = VTDecompressionSessionCreate(
             allocator: kCFAllocatorDefault,
             formatDescription: formatDescription,
-            decoderSpecification: nil,
+            decoderSpecification: decoderParameters,
             imageBufferAttributes: attributes as CFDictionary,
             outputCallback: &outputCallback,
             decompressionSessionOut: &decompressionSession
@@ -175,7 +223,11 @@ class H264Decoder {
         //let nalDataWithStartCode = Data([0x00, 0x00, 0x00, 0x01]) + nalData // start code 추가함
         let nalDataWithStartCode = nalData
         print("nalData count: \(nalData.count)")
-//        var nalSize = CFSwapInt32HostToBig(UInt32(nalData.count - 4)) // NALU 길이를 4바이트로 변환
+        
+        var nalSize = CFSwapInt32HostToBig(UInt32(nalData.count - 4)) // NALU 길이를 4바이트로 변환
+        var lengthBytes = [UInt8](repeating: 0, count: 8)
+        memcpy(&lengthBytes, &nalSize, 4)
+//        memcpy(&nalData, &nalSize, 4)
 //        var nalDataWithLengthPrefix = Data(bytes: &nalSize, count: 4) + nalData[4...]
         
         // NAL data를 CMBlockBuffer로 변환
@@ -268,7 +320,8 @@ class H264Decoder {
 
 
 
-
+ ================================================================================================================================
+ */
 
 
 

@@ -212,9 +212,9 @@ class ViewController: UIViewController {
             if !rtspClient.connect() {
                 return
             }
-            rtspClient.sendTearDown(url: self.url, session: self.rtspSession)
+            rtspClient.sendTearDown(url: self.url, session: self.rtspSession, userAgent: self.userAgent)
             let tearDownResponse = rtspClient.readResponse()
-            print("tearDownResponse: \(tearDownResponse)")
+            print("TearDown Response: \(tearDownResponse)")
             
             guard rtspClient.readResponseStatusCode(response: tearDownResponse) == 200 else {
                 return

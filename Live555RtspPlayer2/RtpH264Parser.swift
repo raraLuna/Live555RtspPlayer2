@@ -103,6 +103,7 @@ class RtpH264Parser: RtpParser {
     
     private func addStartFragmentedPacket(data: [UInt8], length: Int) {
         print("addStartFragmentedPacket(data.count=\(data.count), length=\(length))")
+        //print("addStartFragmentedPacket data: \n\(data)")
         
         RtpParser.fragmentedPackets = 0
         RtpParser.fragmentedBufferLength = length - 1
@@ -121,10 +122,12 @@ class RtpH264Parser: RtpParser {
         // data[0]의 앞 3bit와 data[1]의 뒤 5bit를 하나로 합쳐서 하나의 byte로 만듦
         print("data[0] & 0xE0:\(data[0] & 0xE0) , data[1] & 0x1F: \(data[1] & 0x1F)")
         RtpParser.fragmentedBuffer[0]?.replaceSubrange(1..<(length - 1), with: data[2..<length])
+        //print("addStart RtpParser.fragmentedBuffer: \(RtpParser.fragmentedBuffer)")
     }
     
     private func addMiddleFragmentedPacket(data: [UInt8], length: Int) {
         print("addMiddleFragmentedPacket(data.count=\(data.count), length=\(length))")
+        //print("addMiddleFragmentedPacket data: \n\(data)")
         
         RtpParser.fragmentedPackets += 1
         if RtpParser.fragmentedPackets >= RtpParser.fragmentedBuffer.count {
@@ -134,25 +137,35 @@ class RtpH264Parser: RtpParser {
             RtpParser.fragmentedBufferLength += length - 2
             RtpParser.fragmentedBuffer[RtpParser.fragmentedPackets] = [UInt8](Data(data[2..<length]))
         }
+        //print("addMiddle RtpParser.fragmentedBuffer: \(RtpParser.fragmentedBuffer)")
     }
     
     private func addEndFragmentedPacketAndCombine(data: [UInt8], length: Int) -> [UInt8] {
         print("addEndFragmentedPacketAndCombine(data.count=\(data.count), length=\(length)")
-        
+        //print("addEndFragmentedPacketAndCombine data: \n\(data)")
         guard RtpParser.fragmentedBuffer[0] != nil else {
             print("No NAL FU_A start packet received. Skipped RTP packet.")
             return []
         }
+        //print("addEnd RtpParser.fragmentedBuffer: \(RtpParser.fragmentedBuffer)")
+        //let fragmentedBuffer = RtpParser.fragmentedBuffer[0..<RtpParser.fragmentedPackets + 1]
+        //print("fragmentedBuffer: \(fragmentedBuffer)")
+        
+        print("RtpParser.fragmentedBufferLength: \(RtpParser.fragmentedBufferLength)")
+        print("RtpParser.fragmentedPackets: \(RtpParser.fragmentedPackets)")
+        print("RtpParser.fragmentedBuffer.count: \(RtpParser.fragmentedBuffer.count)")
         
         // 최종 NAL 크기 결정 (NAL prefix 0,0,0,1 포함)
         var nalUnit = [UInt8](Data(count:RtpParser.fragmentedBufferLength + length + 2))
-        writeNalPrefix0001(to: &nalUnit)
+        //var nalUnit = [UInt8](Data(count:fragmentedBuffer.count + length + 2))
+        writeNalPrefix0001(to: &nalUnit) // nalUnit[0..<4] -> [0, 0, 0, 1]
         
         var tmpLen = 4 // prefix 길이
         
         // 모든 조각 모음
-        for i in 0..<RtpParser.fragmentedPackets {
+        for i in 0..<RtpParser.fragmentedPackets + 1 {
             if let fragment = RtpParser.fragmentedBuffer[i] {
+            //if let fragment = fragmentedBuffer[i] {
                 nalUnit.replaceSubrange(tmpLen..<(tmpLen + fragment.count), with: fragment)
                 tmpLen += fragment.count
             }
@@ -163,7 +176,6 @@ class RtpH264Parser: RtpParser {
         clearFragmentedBuffer()
         
         
-        
         /*
         // 0 0 0 1 추가하지 않는 경우
         var nalUnit = [UInt8](Data(count:RtpParser.fragmentedBufferLength + length - 2))
@@ -171,7 +183,7 @@ class RtpH264Parser: RtpParser {
         var tmpLen = 0
         
         // 모든 조각 모음
-        for i in 0..<RtpParser.fragmentedPackets {
+        for i in 0..<RtpParser.fragmentedPackets + 1 {
             if let fragment = RtpParser.fragmentedBuffer[i] {
                 nalUnit.replaceSubrange(tmpLen..<(tmpLen + fragment.count), with: fragment)
                 tmpLen += fragment.count
