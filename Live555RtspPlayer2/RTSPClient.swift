@@ -476,6 +476,9 @@ extension RTSPClient {
                                 }
                             }
                         }
+                    } else {
+                        self.sps = [UInt8](sdpInfo.videoTrack?.sps ?? Data())
+                        self.pps = [UInt8](sdpInfo.videoTrack?.pps ?? Data())
                     }
                     
                     guard self.sps.count != 0 && self.pps.count != 0 else { return }

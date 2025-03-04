@@ -205,6 +205,8 @@ class H264Decoder {
 //            kCVPixelBufferIOSurfacePropertiesKey: [:] as  AnyObject,
 //            kCVPixelBufferOpenGLESCompatibilityKey: NSNumber(booleanLiteral: true)
 //        ]
+        
+        // kCVPixelFormatType_420YpCbCr8BiPlanarFullRange : NV12
         let attributes: [NSString: AnyObject] = [
             kCVPixelBufferIOSurfacePropertiesKey: NSDictionary(),
             kCVPixelBufferMetalCompatibilityKey: kCFBooleanTrue
