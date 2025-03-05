@@ -38,12 +38,18 @@ class AacParser {
         //      |                 |   (1)   |   (2)   |      |   (n)   | bits  |
         //      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+- .. -+-+-+-+-+-+-+-+-+-+
         
+        print("data: \([UInt8](data))")
         var packet = ByteReader(data: data)
         
+        // ((data[0] & 0xFF) << 8) | (data[1] & 0xFF);
         let auHeaderLength = packet.readShort()
+        print("auHeaderLength: \(auHeaderLength)")
+        
         let auHeaderLengthBytes = (auHeaderLength + 7) / 8
+        print("auHeaderLengthBytes: \(auHeaderLengthBytes)")
         
         let headerData = packet.readBytes(length: auHeaderLengthBytes)
+        print("headerData: \(headerData)")
         
         var headerBits = BitReader(data: headerData)
         
@@ -53,16 +59,22 @@ class AacParser {
         let bitsAvailable = auHeaderLength - (numBitsAuSize + numBitsAuIndex)
         var auHeaderCount = 1
         
+        print("bitsAvailable: \(bitsAvailable)")
+        
         if auHeaderCount == 1 {
             let auSize = headerBits.readBits(numBitsAuSize)
             let auIndex = headerBits.readBits(numBitsAuIndex)
             
+            print("auSize: \(auSize)")
+            print("auIndex: \(auIndex)")
+            
             if completFrameIndicator {
                 if auIndex == 0 {
                     if packet.bytesLeft() == auSize {
+                        print("packet.bytesLeft(): \(packet.bytesLeft())")
                         return handleSingleAacFrame(packet: &packet)
                     } else {
-                        // handleFragmentationAacFrame(packet, auSize)
+                        handleFragmentationAacFrame(packet: packet, auSize: auSize)
                     }
                 }
             } else {
@@ -115,6 +127,7 @@ class FragmentedAacFrame {
     }
     
     func appendFragment(fragment: [UInt8]) {
+        print("auData: \(auData)")
         auData.replaceSubrange(auLength..<auLength+fragment.count, with: fragment)
         auLength += fragment.count
     }
@@ -137,8 +150,10 @@ class ByteReader {
         guard position + 2 <= data.count else {
             return 0
         }
-        let value = Int(data[position]) << 8 | Int(data[position + 1])
+        //let value = Int(data[position]) << 8 | Int(data[position + 1])
+        let value = Int(data[position] & 0xFF) << 8 | Int(data[position + 1] & 0xFF)
         position += 2
+        //print("readShort return value: \(value)")
         return value
     }
     

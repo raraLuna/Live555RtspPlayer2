@@ -212,8 +212,7 @@ class RTSPClient {
             print("Received response:\n\(response)")
             return response
         } else {
-            //print("Unrecognize data received")
-            print("...")
+            print("Unrecognize data received")
             return ""
         }
     }
@@ -227,7 +226,7 @@ class RTSPClient {
     }
     
     func sendKeepAlive() {
-        guard let session = self.session else { return }
+        //guard let session = self.session else { return }
         var request = ""
         request += ""
     }
@@ -264,9 +263,9 @@ class RTSPClient {
         self.cSeq += 1
     }
     
-    func sendPlay(url: String, session: String) {
+    func sendPlay(session: String) {
         var request = ""
-        request += "PLAY \(url) RTSP/1.0\(self.CRLF)"
+        request += "PLAY \(self.url) RTSP/1.0\(self.CRLF)"
         request += "Range: npt=0.000-\(self.CRLF)"
         request += "Session: \(session)\(self.CRLF)"
         request += "CSeq: \(self.cSeq)\(self.CRLF)"
@@ -287,11 +286,11 @@ class RTSPClient {
         self.cSeq += 1
     }
     
-    func sendTearDown(url: String, session: String, userAgent: String) {
+    func sendTearDown(session: String, userAgent: String) {
         var request = ""
-        request += "TEARDOWN \(url) RTSP/1.0\(self.CRLF)"
+        request += "TEARDOWN \(self.url) RTSP/1.0\(self.CRLF)"
         request += "Session: \(session)\(self.CRLF)"
-        request += "User-Agent: \(userAgent)\(self.CRLF)"
+        //request += "User-Agent: \(userAgent)\(self.CRLF)"
         request += "CSeq: \(self.cSeq)\(self.CRLF)"
         request += "\(self.CRLF)"
         
@@ -336,7 +335,11 @@ extension RTSPClient {
                     print("Failed to read data")
                 }
                 
-                print("RTP buffer : \(rtpBuffer)")
+                //print("RTP buffer : \(rtpBuffer)")
+                guard !rtpBuffer.isEmpty else {
+                    print("RTP buffer is empty")
+                    return
+                }
                 let rtpHeader = self.readHeader(from: rtpBuffer, packetSize: lengthInt)
                 let rtpPacket = Array(rtpBuffer[12...])
                 
@@ -348,7 +351,7 @@ extension RTSPClient {
                     print("spdInfo.videoTrack.payloadType: \(String(describing: sdpInfo.videoTrack?.payloadType))")
                     print("spdInfo.audioTrack.payloadType: \(String(describing: sdpInfo.audioTrack?.payloadType))")
                     if rtpHeader.payloadType == sdpInfo.videoTrack?.payloadType {
-                        self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
+                        //self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                     } else if rtpHeader.payloadType == sdpInfo.audioTrack?.payloadType {
                         self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                     }
@@ -357,7 +360,7 @@ extension RTSPClient {
                     self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                 } else if payloadType == 96 || payloadType == 97 {
                     print("Video RTP Packet detected")
-                    self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
+                    //self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                 } else {
                     print("Unknown RTP Packet detected")
                 }
@@ -528,13 +531,15 @@ extension RTSPClient {
     
     func parseAudio(rtpHeader: RtpHeader, rtpPacket: [UInt8], sdpInfo: SdpInfo) {
         print("......Audio RTP Parsing......")
-        let aacParser = AacParser(aacMode: self.audioMode)
-        if rtpPacket.count != 0 {
-            let adtsData = aacParser.processRtpPacketAndGetSample(data: rtpPacket)
-            if adtsData.count != 0 {
-                print("AacParser result adtsData: \(adtsData)")
-            }
-        }
+        let aacDecoder = AACDecoder()
+        aacDecoder.decodeAACData(Data(rtpPacket))
+//        let aacParser = AacParser(aacMode: self.audioMode)
+//        if rtpPacket.count != 0 {
+//            let adtsData = aacParser.processRtpPacketAndGetSample(data: rtpPacket)
+//            if adtsData.count != 0 {
+//                print("AacParser result adtsData: \(adtsData)")
+//            }
+//        }
     }
     
     // inout : 메모리 참조 변수

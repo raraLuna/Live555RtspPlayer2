@@ -35,7 +35,7 @@ class ViewController: UIViewController {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
         //let rtspUrl = "rtsp://192.168.0.50:554/test.264"
-        //let rtspUrl = "rtsp://192.168.0.74:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
+        //let rtspUrl = "rtsp://192.168.0.139:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
         //let rtspUrl = "rtsp://192.168.0.139:554/TheSimpsonsMovie_1080x800_h264_AAC.mkv"
         //let rtspUrl = "rtsp://192.168.0.50:554/TheSimpsonsMovie_1080x800_h265_AAC.mkv"
         
@@ -214,9 +214,9 @@ class ViewController: UIViewController {
             if !rtspClient.connect() {
                 return
             }
-            rtspClient.sendTearDown(url: self.url, session: self.rtspSession, userAgent: self.userAgent)
+            rtspClient.sendTearDown(session: self.rtspSession, userAgent: self.userAgent)
             let tearDownResponse = rtspClient.readResponse()
-            print("TearDown Response: \(tearDownResponse)")
+            print("TEARDOWN Response: \(tearDownResponse)")
             
             guard rtspClient.readResponseStatusCode(response: tearDownResponse) == 200 else {
                 return
@@ -311,7 +311,7 @@ class ViewController: UIViewController {
 
             }
             self.rtspSession = sessionVideo
-            rtspClient.sendPlay(url: self.url, session: sessionVideo)
+            rtspClient.sendPlay(session: sessionVideo)
             
             rtspClient.startReceivingData(sdpInfo: sdpInfo)
         }
