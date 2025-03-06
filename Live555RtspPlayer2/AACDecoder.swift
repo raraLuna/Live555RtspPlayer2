@@ -10,16 +10,16 @@ import AVFoundation
 import AudioToolbox
 
 class AACDecoder {
-    private var audioQueue: AVAudioEngine
-    private var audioPlayer: AVAudioPlayerNode
+    //private var audioQueue: AVAudioEngine
+    //private var audioPlayer: AVAudioPlayerNode
     private var audioFormat: AVAudioFormat?
     private var converter: AVAudioConverter?
     
-    init() {
-        self.audioQueue = AVAudioEngine()
-        self.audioPlayer = AVAudioPlayerNode()
-        audioQueue.attach(audioPlayer)
-    }
+//    init() {
+//        self.audioQueue = AVAudioEngine()
+//        self.audioPlayer = AVAudioPlayerNode()
+//        audioQueue.attach(audioPlayer)
+//    }
     
 //    func parseRTPPacket(_ packet: [UInt8]) -> Data {
 //        // RFC 3640 기반 AAC RTP 패킷 파싱
@@ -114,10 +114,16 @@ class AACDecoder {
                 print("Invalid audio format")
                 return
             }
-        audioFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: format.pointee.mSampleRate, channels: format.pointee.mChannelsPerFrame, interleaved: false)
+        //audioFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: format.pointee.mSampleRate, channels: format.pointee.mChannelsPerFrame, interleaved: false)
+        audioFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: format.pointee.mSampleRate, channels: format.pointee.mChannelsPerFrame, interleaved: false)
         if let format = audioFormat {
-            let pcmBuffer = self.convertSampleBufferToPCMBuffer(sampleBuffer, format: format)
+            guard let pcmBuffer = self.convertSampleBufferToPCMBuffer(sampleBuffer, format: format) else {
+                return
+            }
             print("now play pcm buffer")
+            let audioPlayer = AudioPlayer(format: format)
+            
+            audioPlayer.appendBuffer(pcmBuffer)
         }
     }
     
