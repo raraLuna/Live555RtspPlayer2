@@ -88,29 +88,45 @@ class AudioDecoder {
         fillBufferList.mBuffers.mDataByteSize = outputBufferSize
         fillBufferList.mBuffers.mData = malloc(Int(outputBufferSize))
         
+        // `packetDesc` 메모리 할당
+        let packetDescPointer = UnsafeMutablePointer<AudioStreamPacketDescription>.allocate(capacity: 1)
+        packetDescPointer.initialize(to: AudioStreamPacketDescription(mStartOffset: 0,
+                                                                      mVariableFramesInPacket: 0,
+                                                                      mDataByteSize: sourceBufferSize))
         
         var userInfo = ConverterInfo(sourceChannelsPerFrame: sourceFormat.mChannelsPerFrame,
                                      sourceDataSize: sourceBufferSize,
                                      sourceBuffer: sourceBuffer,
-                                     packetDesc: AudioStreamPacketDescription(mStartOffset: 0,
-                                                                              mVariableFramesInPacket: 0,
-                                                                              mDataByteSize: sourceBufferSize)
+                                     packetDesc: packetDescPointer
         )
         
-        var outputPacketDesc = AudioStreamPacketDescription()
+        // `outputPacketDesc` 메모리 할당
+        let outputPacketDescPointer = UnsafeMutablePointer<AudioStreamPacketDescription>.allocate(capacity: 1)
+        outputPacketDescPointer.initialize(to: AudioStreamPacketDescription())
+
         var numPackets = ioOutputDataPackets
-        
-        //let status = AudioConverterFillComplexBuffer(converter, decodeConverterComplexInputDataProc, &userInfo, &numPackets, &fillBufferList, &outputPacketDesc)
-        let status = withUnsafeMutablePointer(to: &outputPacketDesc) { ptr in
-            AudioConverterFillComplexBuffer(converter, decodeConverterComplexInputDataProc, &userInfo, &numPackets, &fillBufferList, ptr)
-        }
-        
+
+        // `AudioConverterFillComplexBuffer` 호출
+        let status = AudioConverterFillComplexBuffer(
+            converter,
+            decodeConverterComplexInputDataProc,
+            &userInfo,
+            &numPackets,
+            &fillBufferList,
+            outputPacketDescPointer
+        )
+
         if status != noErr {
             print("AudioConverterFillComplexBuffer failed: \(status)")
             return
         }
-        
-        completion(fillBufferList, numPackets, outputPacketDesc)
+
+        // `completion` 블록 실행
+        completion(fillBufferList, numPackets, outputPacketDescPointer.pointee)
+
+        // 메모리 해제
+        packetDescPointer.deallocate()
+        outputPacketDescPointer.deallocate()
     }
     
     // MARK: Audio Converter Input Data Callback
