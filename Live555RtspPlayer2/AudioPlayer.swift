@@ -8,44 +8,32 @@
 import Foundation
 import AVFoundation
 
-class AudioPlayer {
-//    private let audioEngine = AVAudioEngine()
-//    private let playerNode = AVAudioPlayerNode()
-    //private var pcmBufferQueue: [AVAudioPCMBuffer] = []
+struct PCMBuffer {
     static var pcmBufferQueue: [AVAudioPCMBuffer] = []
-    //private var accumulatedFrames: AVAudioFrameCount = 0
     static var accumulatedFrames: AVAudioFrameCount = 0
+}
+
+class AudioPlayer {
+
     private let sampleRate: Double
     private let framePerSecond: AVAudioFrameCount
-    
 
-    
-    
     init(format: AVAudioFormat) {
         self.sampleRate = format.sampleRate
         self.framePerSecond = AVAudioFrameCount(sampleRate) // 1초 분량의 프레임 수
-        
-//        audioEngine.attach(playerNode)
-//        audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: format)
-//        
-//        do {
-//            try audioEngine.start()
-//        } catch {
-//            print("AudioEngine start error: \(error)")
-//        }
-//        print("Audio Engine Started.")
+
     }
     
     func appendBuffer(_ buffer: AVAudioPCMBuffer) {
         print("appending pcm buffer to accumulatedFrames...")
-        AudioPlayer.pcmBufferQueue.append(buffer)
-        AudioPlayer.accumulatedFrames += buffer.frameLength
+        PCMBuffer.pcmBufferQueue.append(buffer)
+        PCMBuffer.accumulatedFrames += buffer.frameLength
         
         let requiredFrames = framePerSecond // * n n초 분량의 프레임 수
-        print("accumulatedFrames: \(AudioPlayer.accumulatedFrames)")
+        print("accumulatedFrames: \(PCMBuffer.accumulatedFrames)")
         print("requiredFrames: \(requiredFrames)")
         
-        if AudioPlayer.accumulatedFrames >= requiredFrames {
+        if PCMBuffer.accumulatedFrames >= requiredFrames {
             playAccumulatedBuffer()
         }
         
@@ -58,19 +46,19 @@ class AudioPlayer {
         print("audioformat: \(String(describing: inputFormat))")
 
         // 3초 분량의 AVAudioPCMBuffer 생성
-        guard let mergedPCMBuffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: AudioPlayer.accumulatedFrames) else {
+        guard let mergedPCMBuffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: PCMBuffer.accumulatedFrames) else {
             print("Failed to create merged buffer")
             return
         }
         print("AVAudioPCMBuffer format: \(mergedPCMBuffer.format)")
         
-        mergedPCMBuffer.frameLength = AudioPlayer.accumulatedFrames
+        mergedPCMBuffer.frameLength = PCMBuffer.accumulatedFrames
         print("mergedPCMBuffer.frameLength : \(mergedPCMBuffer.frameLength)")
         print("format.channelCount \(inputFormat.channelCount)")
         
         // 각 버퍼의 데이터 병합
         var currentFrame: AVAudioFrameCount = 0
-        for buffer in AudioPlayer.pcmBufferQueue {
+        for buffer in PCMBuffer.pcmBufferQueue {
             let copyFrameLength = buffer.frameLength
             if let src = buffer.int16ChannelData, let dst = mergedPCMBuffer.int16ChannelData {
                 
@@ -93,11 +81,7 @@ class AudioPlayer {
         
         printPCMBufferInfo(playingPCMBuffer)
         
-        
-        // MARK: UInt8로 변환하여 재생 시도 -> 실패함
-        /*
-        guard let uInt8BufferData = floatChannelDataToUInt8(buffer: playingPCMBuffer) else { return }
-        print("uInt8BufferData: \(uInt8BufferData)")
+        dumpPCMBufferToFile(buffer: playingPCMBuffer, fileName: "pcmDumpFile")
         
         // AVAudioEngine은 기본적으로 Float32를 지원함. pcmFormatInt16을 사용하기 위해서는 convert해줘야 한다.
         let audioEngine = AVAudioEngine()
@@ -108,57 +92,12 @@ class AudioPlayer {
         print("Audio Engine attached to playerNode.")
         audioEngine.connect(playerNode, to: audioEngine.outputNode, format: outputFormat)
         print("Audio Engine connected to mainMixerNode.")
-        //audioEngine.prepare()
         
         do {
             try audioEngine.start()
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
             print("Audio Engine Started.")
-            
-            
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: AVAudioFrameCount(uInt8BufferData.count) / (outputFormat.streamDescription.pointee.mBytesPerFrame)) else {
-                print("Failed to create AVAudioPCMBuffer")
-                return
-            }
-
-            buffer.frameLength = buffer.frameCapacity
-            
-            let audioBuffer = buffer.audioBufferList.pointee.mBuffers
-            guard let dst = audioBuffer.mData?.bindMemory(to: UInt8.self, capacity: uInt8BufferData.count) else {
-                print("Failed to bind memory to destination buffer")
-                return
-            }
-            
-            uInt8BufferData.withUnsafeBufferPointer {
-                if let baseAddress = $0.baseAddress {
-                    dst.update(from: baseAddress, count: uInt8BufferData.count)
-                    print("Data successfully copied to buffer.")
-                } else {
-                    print("Failed to get base address of byte array")
-                }
-            }
-            playerNode.scheduleBuffer(buffer, completionHandler: nil)
-            print("Player Node scheduleBuffer prepared")
-         */
-        
-        // AVAudioEngine은 기본적으로 Float32를 지원함. pcmFormatInt16을 사용하기 위해서는 convert해줘야 한다.
-        let audioEngine = AVAudioEngine()
-        let playerNode = AVAudioPlayerNode()
-        guard let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false) else { return }
-        
-        audioEngine.attach(playerNode)
-        print("Audio Engine attached to playerNode.")
-        audioEngine.connect(playerNode, to: audioEngine.outputNode, format: outputFormat)
-        print("Audio Engine connected to mainMixerNode.")
-        //audioEngine.prepare()
-        
-        do {
-            try audioEngine.start()
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
-            print("Audio Engine Started.")
-        
         
             playerNode.scheduleBuffer(playingPCMBuffer, completionHandler: nil)
             print("Player Node scheduleBuffer prepared")
@@ -175,8 +114,8 @@ class AudioPlayer {
         }
         
         // 누적 데이터 초기화
-        AudioPlayer.pcmBufferQueue.removeAll()
-        AudioPlayer.accumulatedFrames = 0
+        PCMBuffer.pcmBufferQueue.removeAll()
+        PCMBuffer.accumulatedFrames = 0
     }
     
     func convertBuffer(_ inputBuffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
@@ -193,10 +132,6 @@ class AudioPlayer {
             print("Failed to create output buffer")
             return nil
         }
-        
-        // outputBuffer.frameLength = inputBuffer.frameLength
-        
-        
         
         if let floatData = outputBuffer.floatChannelData {
             memset(floatData.pointee, 0, Int(outputBuffer.frameCapacity) * MemoryLayout<Float32>.size)
@@ -243,7 +178,7 @@ class AudioPlayer {
             }
             
             //print("🔹 Channel \(channel) Data: \(samples.prefix(20)) ...") // 앞 20개 샘플만 출력
-            print("🔹 Channel \(channel) Data: \(samples) ...")
+            print("🔹 Channel \(channel) Data: \(samples)")
         }
     }
 
@@ -310,8 +245,63 @@ class AudioPlayer {
         
         return uint8Array
     }
+    
+    func uint8ToFloatChannelData(uint8Array: [UInt8], format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let frameLength = uint8Array.count / MemoryLayout<Float32>.size
+        
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameLength)) else {
+            return nil
+        }
+        
+        buffer.frameLength = AVAudioFrameCount(frameLength)
+        
+        guard let floatChannelData = buffer.floatChannelData else { return nil }
+        
+        uint8Array.withUnsafeBytes { rawBufferPointer in
+            let floatBuffer = rawBufferPointer.bindMemory(to: Float32.self)
+            for channel in 0..<Int(format.channelCount) {
+                memcpy(floatChannelData[channel], floatBuffer.baseAddress!, frameLength * MemoryLayout<Float32>.size)
+            }
+        }
+        
+        return buffer
+    }
+    
+    func dumpPCMBufferToFile(buffer: AVAudioPCMBuffer, fileName: String) {
+        guard let floatChannelData = buffer.floatChannelData else {
+            print("Error: No float channel data abailable")
+            return
+        }
+        
+        let frameLength = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+        
+        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        
+        var data = Data()
+        
+        for channel in 0..<channelCount {
+            let floatBuffer = floatChannelData[channel]
+            let channelData = Data(bytes: floatBuffer, count: frameLength * MemoryLayout<Float32>.size)
+            data.append(channelData)
+        }
+        
+        do {
+            try data.write(to: fileURL)
+            print("PCM dump saved at: \(fileURL.path())")
+        } catch {
+            print("Failed to save PCM file: \(error.localizedDescription)")
+        }
+    }
+
 
 }
+
+
+
+
+
+
 
 extension Float {
     /**
@@ -344,4 +334,53 @@ extension Float {
     }
 }
 
+
+
+// MARK: UInt8로 변환하여 재생 시도 -> 실패함
+/*
+guard let uInt8BufferData = floatChannelDataToUInt8(buffer: playingPCMBuffer) else { return }
+print("uInt8BufferData: \(uInt8BufferData)")
+
+// AVAudioEngine은 기본적으로 Float32를 지원함. pcmFormatInt16을 사용하기 위해서는 convert해줘야 한다.
+let audioEngine = AVAudioEngine()
+let playerNode = AVAudioPlayerNode()
+guard let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false) else { return }
+
+audioEngine.attach(playerNode)
+print("Audio Engine attached to playerNode.")
+audioEngine.connect(playerNode, to: audioEngine.outputNode, format: outputFormat)
+print("Audio Engine connected to mainMixerNode.")
+//audioEngine.prepare()
+
+do {
+    try audioEngine.start()
+    try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+    try AVAudioSession.sharedInstance().setActive(true)
+    print("Audio Engine Started.")
+    
+    
+    guard let buffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: AVAudioFrameCount(uInt8BufferData.count) / (outputFormat.streamDescription.pointee.mBytesPerFrame)) else {
+        print("Failed to create AVAudioPCMBuffer")
+        return
+    }
+
+    buffer.frameLength = buffer.frameCapacity
+    
+    let audioBuffer = buffer.audioBufferList.pointee.mBuffers
+    guard let dst = audioBuffer.mData?.bindMemory(to: UInt8.self, capacity: uInt8BufferData.count) else {
+        print("Failed to bind memory to destination buffer")
+        return
+    }
+    
+    uInt8BufferData.withUnsafeBufferPointer {
+        if let baseAddress = $0.baseAddress {
+            dst.update(from: baseAddress, count: uInt8BufferData.count)
+            print("Data successfully copied to buffer.")
+        } else {
+            print("Failed to get base address of byte array")
+        }
+    }
+    playerNode.scheduleBuffer(buffer, completionHandler: nil)
+    print("Player Node scheduleBuffer prepared")
+ */
 

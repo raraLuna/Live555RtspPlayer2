@@ -10,28 +10,12 @@ import AVFoundation
 import AudioToolbox
 
 class AACDecoder {
-    //private var audioQueue: AVAudioEngine
-    //private var audioPlayer: AVAudioPlayerNode
     private var audioFormat: AVAudioFormat?
     private var converter: AVAudioConverter?
     
-//    init() {
-//        self.audioQueue = AVAudioEngine()
-//        self.audioPlayer = AVAudioPlayerNode()
-//        audioQueue.attach(audioPlayer)
-//    }
-    
-//    func parseRTPPacket(_ packet: [UInt8]) -> Data {
-//        // RFC 3640 기반 AAC RTP 패킷 파싱
-//        guard packet.count > 12 else { return Data() } // RTP Header (12 bytes) 제거
-//        let aacPayload = packet[12...] // AAC 데이터만 추출
-//        print("aacHeadre: \(packet[0..<12])")
-//        print("aacPayload: \(aacPayload)")
-//        return Data(aacPayload)
-//    }
-    
     func decodeAACData(_ aacData: Data) {
         var formatDescription: CMAudioFormatDescription?
+        // asbd: Audio Stream Basic Description
         var asbd = AudioStreamBasicDescription(mSampleRate: 16000, // AAC 샘플 레이트
                                                mFormatID: kAudioFormatMPEG4AAC,
                                                mFormatFlags: 0,

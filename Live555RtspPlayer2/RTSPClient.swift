@@ -289,9 +289,9 @@ class RTSPClient {
     func sendTearDown(session: String, userAgent: String) {
         var request = ""
         request += "TEARDOWN \(self.url) RTSP/1.0\(self.CRLF)"
-        request += "Session: \(session)\(self.CRLF)"
         //request += "User-Agent: \(userAgent)\(self.CRLF)"
         request += "CSeq: \(self.cSeq)\(self.CRLF)"
+        request += "Session: \(session)\(self.CRLF)"
         request += "\(self.CRLF)"
         
         sendRequest(request)
@@ -531,8 +531,19 @@ extension RTSPClient {
     
     func parseAudio(rtpHeader: RtpHeader, rtpPacket: [UInt8], sdpInfo: SdpInfo) {
         print("......Audio RTP Parsing......")
-        let aacDecoder = AACDecoder()
-        aacDecoder.decodeAACData(Data(rtpPacket))
+        guard let audioTrack = sdpInfo.audioTrack else { return }
+        let config = audioTrack.config
+        print("audio config: \(config)")
+        let adtsData = addAdtsHeader(rtpPacket, config: config)
+        
+        guard let decoder = AACLATMDecoder() else { return }
+        guard let pcmData = decoder.decodeAAC(Data(adtsData)) else { return }
+        print("Decoded PCM Size: \(pcmData.count) bytes")
+        
+        
+        //let aacDecoder = AACDecoder()
+        //aacDecoder.decodeAACData(Data(rtpPacket))
+
 //        let aacParser = AacParser(aacMode: self.audioMode)
 //        if rtpPacket.count != 0 {
 //            let adtsData = aacParser.processRtpPacketAndGetSample(data: rtpPacket)
@@ -786,7 +797,7 @@ extension RTSPClient {
         guard let params = getSdpParams(param: param) else {
             return
         }
-        
+        print("audio params: \(params)")
         for param in params {
             switch param.0.lowercased() {
             case "mode":
@@ -795,6 +806,7 @@ extension RTSPClient {
                 
             case "config":
                 audioTrack.config = getBytesFromHexString(hexString: param.1)
+                print("audioTrack.config: \(audioTrack.config)")
             default:
                 break
             }
@@ -1254,12 +1266,14 @@ extension RTSPClient {
     }
     
     func processAacRtpPacket(_ rtpPacket: [UInt8]) -> [UInt8] {
-        guard rtpPacket.count > 12 else { return [] } // RTP 크기 확인
+        //guard rtpPacket.count > 12 else { return [] } // RTP 크기 확인
+        guard rtpPacket.count > 0 else { return [] } // RTP 크기 확인
         
-        let payload = Array(rtpPacket[12...]) // RTP 헤더 제거
-        let adtsHeader = createAdtsHeader(for: payload.count)
+        //let payload = Array(rtpPacket[12...]) // RTP 헤더 제거
+        //let adtsHeader = createAdtsHeader(for: payload.count)
+        let adtsHeader = createAdtsHeader(for: rtpPacket.count)
         
-        return adtsHeader + payload
+        return adtsHeader + rtpPacket
     }
     
     // ADTS 헤더 생성 (AAC-LC, 44.1kHz, 2채널 예제)
@@ -1273,6 +1287,36 @@ extension RTSPClient {
             UInt8((fullLength & 0x3F) << 2),   // Frame Length (low
             0xFC        // CRC disabled
         ]
+    }
+    
+    func addAdtsHeader(_ data: [UInt8], config: [UInt8]) -> Data {
+        guard data.count > 0 else { return Data() }
+        
+        let profile = (config[0] >> 3) - 1
+        let sampleRateIndex = ((config[0] & 0x07) << 1) | ((config[1] & 0x80) >> 7)
+        let channelConfig = (config[1] >> 3) & 0x0F
+        
+        let cfUint8 = UInt8((channelConfig & 3) << 6) //ChannelConfig
+        let flUint8 = UInt8((data.count + 7) >> 11) //Frame length (high)
+        
+        let pscf = UInt8((profile << 6) | (sampleRateIndex << 2) | (channelConfig >> 2)) //Profile, SampleRateIndex, ChannelConfig
+        let cffl = cfUint8 | flUint8
+        let flm = UInt8(((data.count + 7) >> 3) & 0xFF) //Frame length (middle)
+        let fllbf = UInt8(((data.count + 7) & 0x07) << 5) //Frame length (low) + bufferFullness
+        
+        let adtsHeader: [UInt8] = [
+            0xFF, 0xF1, // Syncword (0xFFF) + MPEG-2
+            pscf, // Profile, SampleRateIndex, ChannelConfig
+            cffl, // ChannelConfig + Frame length (high)
+            flm, // Frame length (middle)
+            fllbf, // Frame length (low) + bufferFullness
+            0xFC // BufferFullness & Number of AAC frames
+        ]
+        
+        var adtsData = Data(adtsHeader)
+        adtsData.append(Data(data))
+        
+        return adtsData
     }
     
     func getPayloadType(from rtpPacket: [UInt8]) -> Int {
