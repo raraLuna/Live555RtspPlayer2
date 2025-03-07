@@ -9,132 +9,182 @@ import Foundation
 import AVFoundation
 import AudioToolbox
 
+struct ConverterInfo {
+    var sourceChannelsPerFrame: UInt32
+    var sourceDataSize: UInt32
+    var sourceBuffer: UnsafeMutableRawPointer?
+    var packetDesc: UnsafeMutablePointer<AudioStreamPacketDescription>
+}
+
 class AudioDecoder {
-    private let mimeType: String
-    private let sampleRate: Int
-    private let channelCount: Int
-    private let codecConfig: Data?
-    private let audioFrameQueue: AudioFrameQueue
-    private var isRunning = true
-    private let queue = DispatchQueue(label: "AudioDecodeQueue", qos: .userInitiated)
-    private let semaphore = DispatchSemaphore(value: 0)
+    private var audioConverter: AudioConverterRef?
+    private var sourceFormat: AudioStreamBasicDescription
+    private var destinationFormat: AudioStreamBasicDescription
     
-    private var audioDecoder: AudioConverterRef? // 오디오를 변환하는 Apple API
-    private var audioEngine: AVAudioEngine!
-    private var audioPlayerNode: AVAudioPlayerNode!
-    private var audioFormat: AVAudioFormat!
-    
-    init(mimeType: String, sampleRate: Int, channelCount: Int, codecConfig: Data?, audioFrameQueue: AudioFrameQueue) {
-        self.mimeType = mimeType
-        self.sampleRate = sampleRate
-        self.channelCount = channelCount
-        self.codecConfig = codecConfig
-        self.audioFrameQueue = audioFrameQueue
+    init(sourceFormat: AudioStreamBasicDescription, destFormatID: AudioFormatID, sampleRate: Float64, useHardwareDecode: Bool) {
+        self.sourceFormat = sourceFormat
+        self.destinationFormat = AudioStreamBasicDescription()
+        self.audioConverter = configureDecoder(sourceFormatDesc: sourceFormat, destFormat: &self.destinationFormat, destFormatID: destFormatID, sampleRate: sampleRate, useHardwareDecode: useHardwareDecode)
     }
     
-    func stopAsync() {
-        isRunning = false
-        semaphore.signal() // awake thread
+    deinit {
+        freeDecoder()
     }
     
-    func startDecoding() {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            
-            while self.isRunning {
-                // 데이터를 가져오거나 대기함
-                guard let audioFrame = self.getAudioFrame() else {
-                    self.semaphore.wait(timeout: .now() + 1) // 1초 대기 후 다시 체크
-                    continue
-                }
-                
-                // 오디오 디코딩
-                self.decodeAudio(audioFrame)
-            }
+    // MARK: Public Functions
+    func decodeAudio(sourceBuffer: UnsafeMutableRawPointer, sourceBufferSize: UInt32, completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
+        decodeFormat(converter: audioConverter, sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize, sourceFormat: sourceFormat, destFormat: destinationFormat, completion: completion)
+    }
+    
+    func freeDecoder() {
+        if let converter = audioConverter {
+            AudioConverterDispose(converter)
+            audioConverter = nil
         }
     }
     
-    private func getAudioFrame() -> Data? {
-        guard let frame = audioFrameQueue.pop() else {
-            print("Empty audio frame")
+    // MARK: Private Functions
+    private func configureDecoder(sourceFormatDesc: AudioStreamBasicDescription, destFormat: inout AudioStreamBasicDescription, destFormatID: AudioFormatID, sampleRate: Float64, useHardwareDecode: Bool) -> AudioConverterRef? {
+        if destFormatID != kAudioFormatLinearPCM {
+            print("Unsupported format after decoding")
             return nil
         }
-        return Data(frame.data[frame.offset..<(frame.offset + frame.length)])
-    }
-    
-    private func decodeAudio(_ frame: Data) {
-        setupAudioDecoder(sampleRate: 16000, channels: 1, codecType: kAudioFormatMPEG4AAC)
-    }
-    
-    
-    func setupAudioDecoder(sampleRate: Int, channels: Int, codecType: AudioFormatID) {
-        var inputFormat = AudioStreamBasicDescription()
-        inputFormat.mFormatID = codecType // kAudioFormatMPEG4AAC 또는 kAudioFormatOpus
-        inputFormat.mSampleRate = Float64(sampleRate)
-        inputFormat.mChannelsPerFrame = UInt32(channels)
-        inputFormat.mFramesPerPacket = 1024
-        inputFormat.mBitsPerChannel = 0
-        inputFormat.mBytesPerFrame = 0
-        inputFormat.mBytesPerPacket = 0
+        var sourceFormat = sourceFormatDesc
         
-        var outputFormat = AudioStreamBasicDescription()
-        outputFormat.mFormatID = kAudioFormatLinearPCM
-        outputFormat.mSampleRate = Float64(sampleRate)
-        outputFormat.mChannelsPerFrame = UInt32(channels)
-        outputFormat.mFramesPerPacket = 1
-        outputFormat.mBitsPerChannel = 16
-        outputFormat.mBytesPerFrame = outputFormat.mChannelsPerFrame * 2
-        outputFormat.mBytesPerPacket = outputFormat.mBytesPerFrame
-        outputFormat.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked
+        destFormat.mSampleRate = sampleRate
+        destFormat.mFormatID = kAudioFormatLinearPCM
+        destFormat.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked
+        destFormat.mFramesPerPacket = 1
+        destFormat.mBitsPerChannel = 16
+        destFormat.mChannelsPerFrame = sourceFormat.mChannelsPerFrame
+        destFormat.mBytesPerFrame = destFormat.mBitsPerChannel / 8 * destFormat.mChannelsPerFrame
+        destFormat.mBytesPerPacket = destFormat.mBytesPerFrame * destFormat.mFramesPerPacket
         
-        let status = AudioConverterNew(&inputFormat, &outputFormat, &audioDecoder)
+        guard let audioClassDesc = getAudioClassDescription(type: destFormatID, manufacturer: kAppleHardwareAudioCodecManufacturer) else {
+            return nil
+        }
+        
+        var converter: AudioConverterRef?
+        let status = AudioConverterNewSpecific(&sourceFormat, &destFormat, destFormat.mChannelsPerFrame, audioClassDesc, &converter)
+        
         if status != noErr {
-            print("AudioConverter creation failed with error: \(status)")
-        } else {
-            print("AudioDecoder Initialized successfully")
+            print("Audio Converter creation failed")
+            return nil
+        }
+        
+        print("Audio converter created successfully")
+        return converter
+    }
+    
+    private func decodeFormat(converter: AudioConverterRef?, sourceBuffer: UnsafeMutableRawPointer, sourceBufferSize: UInt32, sourceFormat: AudioStreamBasicDescription, destFormat: AudioStreamBasicDescription, completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
+        guard let converter = converter else { return }
+        
+        let ioOutputDataPackets: UInt32 = 1024
+        let outputBufferSize = ioOutputDataPackets * destFormat.mChannelsPerFrame * destFormat.mBytesPerFrame
+        
+        var fillBufferList = AudioBufferList()
+        fillBufferList.mNumberBuffers = 1
+        fillBufferList.mBuffers.mNumberChannels = destFormat.mChannelsPerFrame
+        fillBufferList.mBuffers.mDataByteSize = outputBufferSize
+        fillBufferList.mBuffers.mData = malloc(Int(outputBufferSize))
+        
+        
+        var userInfo = ConverterInfo(sourceChannelsPerFrame: sourceFormat.mChannelsPerFrame,
+                                     sourceDataSize: sourceBufferSize,
+                                     sourceBuffer: sourceBuffer,
+                                     packetDesc: AudioStreamPacketDescription(mStartOffset: 0,
+                                                                              mVariableFramesInPacket: 0,
+                                                                              mDataByteSize: sourceBufferSize)
+        )
+        
+        var outputPacketDesc = AudioStreamPacketDescription()
+        var numPackets = ioOutputDataPackets
+        
+        //let status = AudioConverterFillComplexBuffer(converter, decodeConverterComplexInputDataProc, &userInfo, &numPackets, &fillBufferList, &outputPacketDesc)
+        let status = withUnsafeMutablePointer(to: &outputPacketDesc) { ptr in
+            AudioConverterFillComplexBuffer(converter, decodeConverterComplexInputDataProc, &userInfo, &numPackets, &fillBufferList, ptr)
+        }
+        
+        if status != noErr {
+            print("AudioConverterFillComplexBuffer failed: \(status)")
+            return
+        }
+        
+        completion(fillBufferList, numPackets, outputPacketDesc)
+    }
+    
+    // MARK: Audio Converter Input Data Callback
+    private let decodeConverterComplexInputDataProc: AudioConverterComplexInputDataProc = { _, ioNumberDataPackets, ioData, outDataPacketDescription, inUserData in
+        guard let inUserData = inUserData else {
+            return -1
+        }
+        
+        var info = inUserData.assumingMemoryBound(to: ConverterInfo.self).pointee
+        
+        if info.sourceDataSize <= 0 {
+            ioNumberDataPackets.pointee = 0
+            return -1
+        }
+        
+        if let outDataPacketDescription = outDataPacketDescription {
+            outDataPacketDescription.pointee = info.packetDesc
+        }
+        
+        ioData.pointee.mNumberBuffers = 1
+        ioData.pointee.mBuffers.mData = info.sourceBuffer
+        ioData.pointee.mBuffers.mNumberChannels = info.sourceChannelsPerFrame
+        ioData.pointee.mBuffers.mDataByteSize = info.sourceDataSize
+        
+        return noErr
+
+    }
+    
+    // MARK: Utility Functions
+    private func getAudioClassDescription(type: AudioFormatID, manufacturer: UInt32) -> UnsafePointer<AudioClassDescription>? {
+        var size: UInt32 = 0
+        var decoderSpecific = type
+        var status = AudioFormatGetPropertyInfo(kAudioFormatProperty_Decoders, UInt32(MemoryLayout.size(ofValue: decoderSpecific)), &decoderSpecific, &size)
+        
+        if status != noErr || size == 0 {
+            print("Failed to get audio decoder info")
+            return nil
+        }
+        
+        let count = Int(size) / MemoryLayout<AudioClassDescription>.size
+        var descriptions = [AudioClassDescription](repeating: AudioClassDescription(), count: count)
+        
+        let status2 = AudioFormatGetProperty(kAudioFormatProperty_Decoders, UInt32(MemoryLayout.size(ofValue: decoderSpecific)), &decoderSpecific, &size, &descriptions)
+        
+        if status2 != noErr {
+            print("Failed to get audio decoder property")
+            return nil
+        }
+        
+        //return descriptions.first { $0.mSubType == type && $0.mManufacturer == manuFacturer }.map { UnsafePointer<AudioClassDescription>(bitPattern: $0.hashValue) } ?? nil
+        
+        // 1. $0.mSubType == type && $0.mManufacturer == manuFacturer 조건을 만족하는 첫번째 요소를 찾음
+        // 2. map은 옵셔널 바인딩과 같은 역할을 함. first가 nil이 아니라면 클로저 내부 코드를 실행. (flatMap도 nil일 경우를 대응)
+        // 3. desc의 메모리 주소를 UnsafePointer<AudioClassDescription>으로 변환함
+        return descriptions.first { $0.mSubType == type && $0.mManufacturer == manuFacturer }.flatMap { desc -> UnsafePointer<AudioClassDescription>? in
+            return withUnsafePointer(to: desc) { $0 }
         }
     }
-}
-
-class AudioFrame {
-    var data: [UInt8]
-    var offset: Int
-    var length: Int
-    var timestampMs: Int64
     
-    init(data: [UInt8], offset: Int, length: Int, timestampMs: Int64) {
-        self.data = data
-        self.offset = offset
-        self.length = length
-        self.timestampMs = timestampMs
-    }
-}
-
-class AudioFrameQueue {
-    private var queue: [AudioFrame] = []
-    private let lock = NSLock()
-    
-    func push(_ frame: AudioFrame) {
-        lock.lock()
-        queue.append(frame)
-        lock.unlock()
-    }
-    
-    func pop() -> AudioFrame? {
-        lock.lock()
-        defer { lock.unlock() }
-        return queue.isEmpty ? nil : queue.removeFirst()
-    }
-    
-    func clear() {
-        lock.lock()
-        queue.removeAll()
-        lock.unlock()
-    }
-    
-    func isEmpty() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return queue.isEmpty
+    private func printAudioStreamBasicDescription(_ asbd: AudioStreamBasicDescription) {
+        var formatID = asbd.mFormatID.bigEndian
+        let formatStr = withUnsafePointer(to: &formatID) {
+            $0.withMemoryRebound(to: CChar.self, capacity: 4) {
+                String(cString: UnsafePointer($0), encoding: .ascii) ?? "?????"
+            }
+        }
+        print(String(format: "Sample Rate:         %10.0f", asbd.mSampleRate))
+        print(String(format: "Format ID:           %10s", formatStr))
+        print(String(format: "Format Flags:        %10X", asbd.mFormatFlags))
+        print(String(format: "Bytes per Packet:    %10d", asbd.mBytesPerPacket))
+        print(String(format: "Frames per Packet:   %10d", asbd.mFramesPerPacket))
+        print(String(format: "Bytes per Frame:     %10d", asbd.mBytesPerFrame))
+        print(String(format: "Channels per Frame:  %10d", asbd.mChannelsPerFrame))
+        print(String(format: "Bits per Channel:    %10d", asbd.mBitsPerChannel))
+        print("")
     }
 }

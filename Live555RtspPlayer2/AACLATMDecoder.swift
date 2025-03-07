@@ -49,6 +49,50 @@ class AACLATMDecoder {
         }
     }
     
+    private let inputDataCallback: AudioConverterComplexInputDataProc = { (
+        inAudioConverter,
+        ioNumberDataPackets,
+        ioData,
+        outDataPacketDescription,
+        inUserData
+    ) -> OSStatus in
+        guard let inUserData = inUserData else { return -1 }
+        let decoder = Unmanaged<AACLATMDecoder>.fromOpaque(inUserData).takeUnretainedValue()
+        print("decoder: \(decoder)")
+        print("inAudioConverter: \(inAudioConverter)\nioNumberDataPackets: \(ioNumberDataPackets)\nioData: \(ioData)\noutDataPacketDescription: \(String(describing: outDataPacketDescription))\ninUserData: \(inUserData)")
+        
+        print("decoder.currentPacketOffset: \(decoder.currentPacketOffset)")
+        print("decoder.inputData.count: \(decoder.inputData.count)")
+        print("Int(ioNumberDataPackets.pointee) * 2: \(Int(ioNumberDataPackets.pointee) * 2)")
+        guard decoder.currentPacketOffset < decoder.inputData.count else {
+            ioNumberDataPackets.pointee = 0
+            return -1
+        }
+        
+        let packetSize = min(decoder.inputData.count - decoder.currentPacketOffset, Int(ioNumberDataPackets.pointee) * 2)
+        print("packetSize: \(packetSize)")
+        
+        ioData.pointee.mBuffers.mDataByteSize = UInt32(packetSize)
+        ioData.pointee.mBuffers.mData = UnsafeMutableRawPointer.allocate(byteCount: packetSize, alignment: 1)
+        decoder.inputData.copyBytes(to: ioData.pointee.mBuffers.mData!.assumingMemoryBound(to: UInt8.self), from: decoder.currentPacketOffset..<decoder.currentPacketOffset + packetSize)
+        
+        decoder.currentPacketOffset += packetSize
+        ioNumberDataPackets.pointee = UInt32(packetSize / 2)
+        
+        if let outDataPacketDescription = outDataPacketDescription {
+            outDataPacketDescription.pointee = UnsafeMutablePointer<AudioStreamPacketDescription>.allocate(capacity: Int(ioNumberDataPackets.pointee))
+            for i in 0..<Int(ioNumberDataPackets.pointee) {
+                outDataPacketDescription.pointee?[i] = AudioStreamPacketDescription(
+                    mStartOffset: Int64(i * 2),
+                    mVariableFramesInPacket: 0,
+                    mDataByteSize: 2
+                )
+            }
+        }
+        
+        return noErr
+    }
+    
     func decodeAAC(_ audioData: Data) -> Data? {
         self.inputData = audioData
         self.currentPacketOffset = 0
@@ -63,47 +107,60 @@ class AACLATMDecoder {
                                   mData: UnsafeMutableRawPointer.allocate(byteCount: Int(numPacket * 2), alignment: 1))
         )
         
-        // 변환 처리
-        audioData.withUnsafeBytes { inputBytes in
-            var inputPacketSize: UInt32 = 1
-            var inputPacketDesc = AudioStreamPacketDescription(
-                mStartOffset: 0,
-                mVariableFramesInPacket: 0,
-                mDataByteSize: UInt32(audioData.count)
-            )
-            
-            var outputBuffer = [UInt8](repeating: 0, count: 8192)
-            var outputPacketSize: UInt32 = 1024
-            
-            // User data holds an AudioFileID, input max packet size, and a count of packets read
-            var uData = (inputPacketDesc, inputPacketSize, UnsafeMutablePointer<Int64>.allocate(capacity: 1))
-            
-            // AudioConverterFillComplesBuffer (inAudioConverter: AudioConverterRef,
-            //                                  inInputDataProc: AudioConverterComplexInputDataProc,
-            //                                  inInputDataProcUserData: UnsafeMutableRawPointer?,
-            //                                  ioOutputDataPacketSize: UnsafeMutablePointer<UInt32>,
-            //                                  outOutputData: UnsafeMutablePointer<AudioBufferList>,
-            //                                  outPacketDescription: UnsafeMutablePointer<AudioStreamPacketDescription>?) -> OSStatus
-            // https://stackoverflow.com/questions/14263808/how-to-use-audioconverterfillcomplexbuffer-and-its-callback
-            let status = AudioConverterFillComplexBuffer(converter!, { _, ioNumberDataPackets, ioData, outDataPacketDescription, inUserData in
-                guard let uData = inUserData?.load(as: (AudioFileID, UInt32, UnsafeMutablePointer<Int64>).self) else { return OSStatus()}
-                ioData.pointee.mBuffers.mDataByteSize = uData.1
-                ioData.pointee.mBuffers.mData = UnsafeMutableRawPointer.allocate(byteCount: Int(uData.1), alignment: 1)
-                outDataPacketDescription?.pointee = UnsafeMutablePointer<AudioStreamPacketDescription>.allocate(capacity: Int(ioNumberDataPackets.pointee))
-                let err = AudioFileReadPacketData(uData.0, false, &ioData.pointee.mBuffers.mDataByteSize, outDataPacketDescription?.pointee, uData.2.pointee, ioNumberDataPackets, ioData.pointee.mBuffers.mData)
-                uData.2.pointee += Int64(ioNumberDataPackets.pointee)
-                return err
-            }, &uData, &numPacket, &bufferList, nil)
-            
-            if status == noErr {
-                outputData.append(outputBuffer, count: Int(outputPacketSize))
-            } else {
-                print("AAC 디코딩 실패: \(status)")
-            }
+        let status = AudioConverterFillComplexBuffer(converter!, inputDataCallback, Unmanaged.passUnretained(self).toOpaque(), &numPacket, &bufferList, nil)
+
+        if status == noErr {
+            outputData.append(bufferList.mBuffers.mData!.assumingMemoryBound(to: UInt8.self), count: Int(numPacket * 2))
+        } else {
+            print("AAC Decode Error: \(status)")
         }
+        
+        
         return outputData
-        
-        
     }
         
 }
+
+
+
+
+//
+//// 변환 처리
+//audioData.withUnsafeBytes { inputBytes in
+//    var inputPacketSize: UInt32 = 1
+//    var inputPacketDesc = AudioStreamPacketDescription(
+//        mStartOffset: 0,
+//        mVariableFramesInPacket: 0,
+//        mDataByteSize: UInt32(audioData.count)
+//    )
+//    
+//    var outputBuffer = [UInt8](repeating: 0, count: 8192)
+//    var outputPacketSize: UInt32 = 1024
+//    
+//    // User data holds an AudioFileID, input max packet size, and a count of packets read
+//    var uData = (inputPacketDesc, inputPacketSize, UnsafeMutablePointer<Int64>.allocate(capacity: 1))
+//    
+//    // AudioConverterFillComplesBuffer (inAudioConverter: AudioConverterRef,
+//    //                                  inInputDataProc: AudioConverterComplexInputDataProc,
+//    //                                  inInputDataProcUserData: UnsafeMutableRawPointer?,
+//    //                                  ioOutputDataPacketSize: UnsafeMutablePointer<UInt32>,
+//    //                                  outOutputData: UnsafeMutablePointer<AudioBufferList>,
+//    //                                  outPacketDescription: UnsafeMutablePointer<AudioStreamPacketDescription>?) -> OSStatus
+//    // https://stackoverflow.com/questions/14263808/how-to-use-audioconverterfillcomplexbuffer-and-its-callback
+//    let status = AudioConverterFillComplexBuffer(converter!, { _, ioNumberDataPackets, ioData, outDataPacketDescription, inUserData in
+//        guard let uData = inUserData?.load(as: (AudioFileID, UInt32, UnsafeMutablePointer<Int64>).self) else { return OSStatus()}
+//        ioData.pointee.mBuffers.mDataByteSize = uData.1
+//        ioData.pointee.mBuffers.mData = UnsafeMutableRawPointer.allocate(byteCount: Int(uData.1), alignment: 1)
+//        outDataPacketDescription?.pointee = UnsafeMutablePointer<AudioStreamPacketDescription>.allocate(capacity: Int(ioNumberDataPackets.pointee))
+//        let err = AudioFileReadPacketData(uData.0, false, &ioData.pointee.mBuffers.mDataByteSize, outDataPacketDescription?.pointee, uData.2.pointee, ioNumberDataPackets, ioData.pointee.mBuffers.mData)
+//        uData.2.pointee += Int64(ioNumberDataPackets.pointee)
+//        return err
+//    }, &uData, &numPacket, &bufferList, nil)
+//    
+//    if status == noErr {
+//        outputData.append(outputBuffer, count: Int(outputPacketSize))
+//    } else {
+//        print("AAC 디코딩 실패: \(status)")
+//    }
+//}
+//return outputData

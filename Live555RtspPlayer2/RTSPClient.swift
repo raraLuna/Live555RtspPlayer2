@@ -545,7 +545,7 @@ extension RTSPClient {
         let adtsData = addAdtsHeader(rtpPacket, config: config)
         
         guard let decoder = AACLATMDecoder() else { return }
-        guard let pcmData = decoder.decodeAAC(Data(adtsData)) else { return }
+        guard let pcmData = decoder.decodeAAC(Data(rtpPacket)) else { return }
         print("Decoded PCM Size: \(pcmData.count) bytes")
         
         
