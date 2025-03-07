@@ -29,6 +29,9 @@ class ViewController: UIViewController {
     var url: String = ""
     var rtspSession: String = ""
     
+    private var rtspClient: RTSPClient?
+    private var isRunning = false
+    
     let backgroundQueue = DispatchQueue(label: "com.olivendove.backgroundQueue", qos: .background)
     
     override func viewDidLoad() {
@@ -210,10 +213,13 @@ class ViewController: UIViewController {
     
     @IBAction func stopRtsp(_ sender: Any) {
         DispatchQueue.global(qos: .background).async {
-            let rtspClient = RTSPClient(serverAddress: self.urlHost, serverPort: UInt16(self.urlPort), serverPath: self.urlPath, url: self.url)
-            if !rtspClient.connect() {
+            guard let rtspClient = self.rtspClient, self.isRunning else {
                 return
             }
+            self.isRunning = false
+            
+            rtspClient.stopReceivingData()
+            
             rtspClient.sendTearDown(session: self.rtspSession, userAgent: self.userAgent)
             let tearDownResponse = rtspClient.readResponse()
             print("TEARDOWN Response: \(tearDownResponse)")
@@ -221,15 +227,46 @@ class ViewController: UIViewController {
             guard rtspClient.readResponseStatusCode(response: tearDownResponse) == 200 else {
                 return
             }
+            
             rtspClient.closeConnection()
+            self.rtspClient = nil
+            
+            
+//            let rtspClient = RTSPClient(serverAddress: self.urlHost, serverPort: UInt16(self.urlPort), serverPath: self.urlPath, url: self.url)
+//            if !rtspClient.connect() {
+//                return
+//            }
+//            rtspClient.sendTearDown(session: self.rtspSession, userAgent: self.userAgent)
+//            let tearDownResponse = rtspClient.readResponse()
+//            print("TEARDOWN Response: \(tearDownResponse)")
+//            
+//            guard rtspClient.readResponseStatusCode(response: tearDownResponse) == 200 else {
+//                return
+//            }
+//            rtspClient.closeConnection()
         }
     }
     
     private func startRTSP() {
         DispatchQueue.global(qos: .background).async {
-            let rtspClient = RTSPClient(serverAddress: self.urlHost, serverPort: UInt16(self.urlPort), serverPath: self.urlPath, url: self.url)
+            //let rtspClient = RTSPClient(serverAddress: self.urlHost, serverPort: UInt16(self.urlPort), serverPath: self.urlPath, url: self.url)
+            self.rtspClient = RTSPClient(serverAddress: self.urlHost, serverPort: UInt16(self.urlPort), serverPath: self.urlPath, url: self.url)
+            
+            guard let rtspClient = self.rtspClient else {
+                return
+            }
+            
+            // 스트리밍 시작 플래그 설정
+            self.isRunning = true
             
             guard rtspClient.connect() else {
+                self.isRunning = false
+                return
+            }
+
+            // 중간에 stop 요청이 들어오면 종료
+            if !self.isRunning {
+                self.stopRtsp(self)
                 return
             }
             
@@ -313,7 +350,9 @@ class ViewController: UIViewController {
             self.rtspSession = sessionVideo
             rtspClient.sendPlay(session: sessionVideo)
             
-            rtspClient.startReceivingData(sdpInfo: sdpInfo)
+            DispatchQueue.global(qos: .background).async {
+                rtspClient.startReceivingData(sdpInfo: sdpInfo)
+            }
         }
     }
 }

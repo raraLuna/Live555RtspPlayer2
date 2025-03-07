@@ -126,6 +126,8 @@ class RTSPClient {
     private var previousTimestamp: UInt32 = 0
     private var estimatedFPS: UInt32 = 0
     
+    private var isRunning = false
+    
     let h264Decoder = H264Decoder()
     
     init(serverAddress: String, serverPort: UInt16 = 554, serverPath: String, url: String) {
@@ -300,9 +302,15 @@ class RTSPClient {
 }
 
 extension RTSPClient {
+    
+    func stopReceivingData() {
+        self.isRunning = false
+        closeConnection()
+    }
+    
     func startReceivingData(sdpInfo: SdpInfo) {
-        
-        while true {
+        self.isRunning = true
+        while self.isRunning {
             // 1byte 만큼 데이터 읽기
             var oneByteBuffer = [UInt8](repeating: 0, count: 1)
             var threeByteBuffer = [UInt8](repeating: 0, count: 3)
