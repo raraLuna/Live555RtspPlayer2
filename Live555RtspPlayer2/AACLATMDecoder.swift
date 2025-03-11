@@ -17,11 +17,19 @@ class AACLATMDecoder {
     init?() {
         self.inputData = Data()
         
+//        kAudioFormatFlagIsFloat                  = (1 << 0),    // 0x1
+//        kAudioFormatFlagIsBigEndian              = (1 << 1),    // 0x2
+//        kAudioFormatFlagIsSignedInteger          = (1 << 2),    // 0x4
+//        kAudioFormatFlagIsPacked                 = (1 << 3),    // 0x8
+//        kAudioFormatFlagIsAlignedHigh            = (1 << 4),    // 0x10
+//        kAudioFormatFlagIsNonInterleaved         = (1 << 5),    // 0x20
+//        kAudioFormatFlagIsNonMixable             = (1 << 6),    // 0x40
+//        kAudioFormatFlagsAreAllClear             = (1 << 31),
         // AAC-LATM 입력 포맷 (RTP)에서 수신
         var inputFormat = AudioStreamBasicDescription()
         inputFormat.mSampleRate = 16000
         inputFormat.mFormatID = kAudioFormatMPEG4AAC
-        inputFormat.mFormatFlags = 0
+        inputFormat.mFormatFlags = 0 // AAC-LATM(RTP)에서 주로 사용됨
         inputFormat.mFramesPerPacket = 1024
         inputFormat.mChannelsPerFrame = 1
         inputFormat.mBitsPerChannel = 0
@@ -63,12 +71,18 @@ class AACLATMDecoder {
         
         print("decoder.currentPacketOffset: \(decoder.currentPacketOffset)")
         print("decoder.inputData.count: \(decoder.inputData.count)")
-        print("Int(ioNumberDataPackets.pointee) * 2: \(Int(ioNumberDataPackets.pointee) * 2)")
+        print("Int(ioNumberDataPackets.pointee): \(Int(ioNumberDataPackets.pointee))")
         guard decoder.currentPacketOffset < decoder.inputData.count else {
             ioNumberDataPackets.pointee = 0
             return -1
         }
         
+        // ioNumberDataPackets.pointee : 변환기에 제공할 패킷 개수
+        // packetSize: 실제 전달할 AAC 데이터 크기
+        // min(남은 데이터 크기, 변환기에 요청된 크기)
+        /// 남은 데이터 크기보다 변환기에 요청된 크기가 크면, 남은 데이터 크기만큼만 전달
+        /// 변환기에 요청된 크기가 작으면, 요청된 만큼의 데이터만 제공
+        /// >> 범위를 초과하는 잘못된 메모리 접근을 방지할 수 있다.
         let packetSize = min(decoder.inputData.count - decoder.currentPacketOffset, Int(ioNumberDataPackets.pointee) * 2)
         print("packetSize: \(packetSize)")
         
@@ -77,6 +91,7 @@ class AACLATMDecoder {
         decoder.inputData.copyBytes(to: ioData.pointee.mBuffers.mData!.assumingMemoryBound(to: UInt8.self), from: decoder.currentPacketOffset..<decoder.currentPacketOffset + packetSize)
         
         decoder.currentPacketOffset += packetSize
+        // 일반적으로 AAC-LATM의 1 패킷 크기를 2 바이트로 가정하여 packetSize / 2를 계산
         ioNumberDataPackets.pointee = UInt32(packetSize / 2)
         
         if let outDataPacketDescription = outDataPacketDescription {

@@ -150,8 +150,9 @@ class ByteReader {
         guard position + 2 <= data.count else {
             return 0
         }
-        //let value = Int(data[position]) << 8 | Int(data[position + 1])
-        let value = Int(data[position] & 0xFF) << 8 | Int(data[position + 1] & 0xFF)
+        let value = Int(data[position]) << 8 | Int(data[position + 1])
+        //let value = Int(data[position] & 0xFF) << 8 | Int(data[position + 1] & 0xFF)
+        //let value = Int(data[position] & 0xFF << 8 | data[position + 1] & 0xFF)
         position += 2
         //print("readShort return value: \(value)")
         return value

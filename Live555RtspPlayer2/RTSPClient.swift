@@ -348,8 +348,11 @@ extension RTSPClient {
                     print("RTP buffer is empty")
                     return
                 }
+                
+                //print("packetSize: \(lengthInt), rtpData:\n\(rtpBuffer)")
                 let rtpHeader = self.readHeader(from: rtpBuffer, packetSize: lengthInt)
                 let rtpPacket = Array(rtpBuffer[12...])
+                
                 
                 let payloadType = rtpHeader.payloadType
                 //print("payloadType: \(payloadType)")
@@ -359,6 +362,7 @@ extension RTSPClient {
                     print("spdInfo.videoTrack.payloadType: \(String(describing: sdpInfo.videoTrack?.payloadType))")
                     print("spdInfo.audioTrack.payloadType: \(String(describing: sdpInfo.audioTrack?.payloadType))")
                     if rtpHeader.payloadType == sdpInfo.videoTrack?.payloadType {
+                        print("video packet arrived")
                         //self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                     } else if rtpHeader.payloadType == sdpInfo.audioTrack?.payloadType {
                         self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
@@ -376,32 +380,32 @@ extension RTSPClient {
                 
                 //let h264Frame = processH264RtpPacket(rtpBuffer)
                 //print("Decoded H.264 frame: \(h264Frame.count) bytes")
-//                if self.encodeType == "h264" {
-//                    let rtpH264Parser = RtpH264Parser()
-//                    if rtpPacket.count != 0 {
-//                        let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
-//                        if nalUnit.count != 0 {
-//                            print("rtpH264Parser result nalUnit: \(nalUnit)")
-//                        }
-//                    }
-//                } else if self.encodeType == "h265" {
-//                    let rtpH265Parser = RtpH265Parser()
-//                    if rtpPacket.count != 0 {
-//                        let nalUnit = rtpH265Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
-//                        if nalUnit.count != 0 {
-//                            print("rtpH265Parser result nalUnit: \(nalUnit)")
-//                        }
-//                    }
-//                }
-
-//                let decoder = H264Decoder()
-//                if h264Frame.count != 0 {
-//                    decoder.decode(nalData: Data(h264Frame))
-//                } else {
-//                    let aacFrame = processAacRtpPacket(rtpBuffer)
-//                    print("Decoded AAC frame: \(aacFrame.count) bytes")
-//                }
-
+                //                if self.encodeType == "h264" {
+                //                    let rtpH264Parser = RtpH264Parser()
+                //                    if rtpPacket.count != 0 {
+                //                        let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
+                //                        if nalUnit.count != 0 {
+                //                            print("rtpH264Parser result nalUnit: \(nalUnit)")
+                //                        }
+                //                    }
+                //                } else if self.encodeType == "h265" {
+                //                    let rtpH265Parser = RtpH265Parser()
+                //                    if rtpPacket.count != 0 {
+                //                        let nalUnit = rtpH265Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
+                //                        if nalUnit.count != 0 {
+                //                            print("rtpH265Parser result nalUnit: \(nalUnit)")
+                //                        }
+                //                    }
+                //                }
+                
+                //                let decoder = H264Decoder()
+                //                if h264Frame.count != 0 {
+                //                    decoder.decode(nalData: Data(h264Frame))
+                //                } else {
+                //                    let aacFrame = processAacRtpPacket(rtpBuffer)
+                //                    print("Decoded AAC frame: \(aacFrame.count) bytes")
+                //                }
+                
                 
             } else {
                 if oneByteBuffer[0] == 0x52 { //"R" 도착
@@ -434,13 +438,13 @@ extension RTSPClient {
         
         //let h264Decoder = H264Decoder()
         
-
+        
         
         if self.encodeType == "h264" {
             let rtpH264Parser = RtpH264Parser()
             if rtpPacket.count != 0 {
                 let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
-
+                
                 let offset = 0
                 var spsIndex = 0
                 var ppsIndex = 0
@@ -503,26 +507,26 @@ extension RTSPClient {
                     } else {
                         h264Decoder.decode(nalData: Data(nalUnit))
                     }
-
                     
                     
-//                    switch type {
-//                    case VideoCodecUtils.NAL_SPS: // 7
-//                        print("Video Nal Unit Type is SPS (\(type))")
-//                    case VideoCodecUtils.NAL_PPS: // 8
-//                        print( "Video Nal Unit Type is PPS (\(type))")
-//                    case VideoCodecUtils.NAL_IDR_SLICE: // 5
-//                        print( "Video Nal Unit Type is IDR Slice (\(type))")
-//                        //let unitSpsPps = nalUnitSps + nalUnitPps
-//                        //print("unitSpsPps: \(unitSpsPps)")
-//                        //nalUnitSps = []
-//                        //nalUnitPps = []
-//                    case VideoCodecUtils.NAL_SLICE: // 1
-//                        print( "Video Nal Unit Type is Slice (\(type))")
-//                    default:
-//                        print("Video Nal Unit Type is \(type)")
-//                        
-//                    }
+                    
+                    //                    switch type {
+                    //                    case VideoCodecUtils.NAL_SPS: // 7
+                    //                        print("Video Nal Unit Type is SPS (\(type))")
+                    //                    case VideoCodecUtils.NAL_PPS: // 8
+                    //                        print( "Video Nal Unit Type is PPS (\(type))")
+                    //                    case VideoCodecUtils.NAL_IDR_SLICE: // 5
+                    //                        print( "Video Nal Unit Type is IDR Slice (\(type))")
+                    //                        //let unitSpsPps = nalUnitSps + nalUnitPps
+                    //                        //print("unitSpsPps: \(unitSpsPps)")
+                    //                        //nalUnitSps = []
+                    //                        //nalUnitPps = []
+                    //                    case VideoCodecUtils.NAL_SLICE: // 1
+                    //                        print( "Video Nal Unit Type is Slice (\(type))")
+                    //                    default:
+                    //                        print("Video Nal Unit Type is \(type)")
+                    //
+                    //                    }
                 }
                 
             }
@@ -537,29 +541,166 @@ extension RTSPClient {
         }
     }
     
+    func convertUInt8ToUInt16(_ data: [UInt8]) -> [UInt16] {
+        var result: [UInt16] = []
+        
+        // UInt8 배열을 2바이트씩 묶어서 UInt16 배열로 변환
+        for i in stride(from: 0, to: data.count, by: 2) {
+            if i + 1 < data.count {
+                let value = (UInt16(data[i]) << 8) | UInt16(data[i + 1]) // Big-Endian 변환
+                result.append(value)
+            }
+        }
+        
+        return result
+    }
+    
     func parseAudio(rtpHeader: RtpHeader, rtpPacket: [UInt8], sdpInfo: SdpInfo) {
         print("......Audio RTP Parsing......")
         guard let audioTrack = sdpInfo.audioTrack else { return }
         let config = audioTrack.config
+        let mode = audioTrack.mode
         print("audio config: \(config)")
-        let adtsData = addAdtsHeader(rtpPacket, config: config)
+        //print("audio mode: \(mode)") // ""
         
-        guard let decoder = AACLATMDecoder() else { return }
-        guard let pcmData = decoder.decodeAAC(Data(rtpPacket)) else { return }
-        print("Decoded PCM Size: \(pcmData.count) bytes")
+        let adtsAudioData = addAdtsHeader(rtpPacket, config: config)
+        let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("rtp_dump.aac").path()
+        MakeDumpFile.dumpRTPPacket(adtsAudioData, to: dumpFilePath)
+        
+        //let rtpPacketUint16 = convertUInt8ToUInt16(rtpPacket)
+        //print("UInt16 Data:", rtpPacketUint16.map { String(format: "0x%04X", $0) }.joined(separator: ", "))
+        // 로그 출력 (0xNN 형식)
+        //print("UInt8 Data:", rtpPacket.map { String(format: "0x%02X", $0) }.joined(separator: ", "))
+        //print("UInt16 Data:", rtpPacketUint16.map { String(format: "0x%02X, 0x%02X", ($0 >> 8) & 0xFF, $0 & 0xFF) }.joined(separator: ", "))
+        //print("audio rtpPacket: \(rtpPacket)")
+        //let auDataList = parseRTPAudioPayload(payload: Data(rtpPacket))
+        
+//        let auDataList = extractAuData(from: Data(rtpPacket), auHeader: auHeaders)
+//        for (index, auData) in auDataList.enumerated() {
+//            print("AU Data \(index): \(auData)")
+//        }
+        
+//        let aacParser = AacParser(aacMode: mode)
+//        let auData = aacParser.processRtpPacketAndGetSample(data: rtpPacket)
+        
+//        let audioDecoder = AACLATMDecoder()
+//        let pcmData = audioDecoder?.decodeAAC(Data(rtpPacket))
+//        print("pcmData: \(String(describing: pcmData?.count))")
+        
+        
+        
+//                var sourceFormat = AudioStreamBasicDescription()
+//                sourceFormat.mSampleRate = 16000
+//                sourceFormat.mFormatID = kAudioFormatMPEG4AAC
+//                sourceFormat.mFormatFlags = 0
+//                sourceFormat.mFramesPerPacket = 1024
+//                sourceFormat.mChannelsPerFrame = 1
+//                sourceFormat.mBitsPerChannel = 0
+//                sourceFormat.mBytesPerPacket = 0
+//                sourceFormat.mBytesPerFrame = 0
+//        
+//                let audioDecoder = AudioDecoder(sourceFormat: sourceFormat, destFormatID: kAudioFormatLinearPCM, sampleRate: 16000, useHardwareDecode: false)
+//        
+//                let sourceData: [UInt8] = addAdtsHeader(rtpPacket, config: config)
+//                let sourceBufferSize = UInt32(sourceData.count)
+//        
+//                // 메모리 직접 할당
+//                let sourceBuffer = UnsafeMutableRawPointer.allocate(byteCount: Int(sourceBufferSize), alignment: 4)
+//                sourceBuffer.copyMemory(from: sourceData, byteCount: Int(sourceBufferSize))
+//        
+//                audioDecoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
+//                    print("오디오 디코딩 완료!")
+//        
+//                    // 사용 후 메모리 해제
+//                    sourceBuffer.deallocate()
+//                }
+        
+        
+        
         
         
         //let aacDecoder = AACDecoder()
         //aacDecoder.decodeAACData(Data(rtpPacket))
-
+        
 //        let aacParser = AacParser(aacMode: self.audioMode)
 //        if rtpPacket.count != 0 {
-//            let adtsData = aacParser.processRtpPacketAndGetSample(data: rtpPacket)
-//            if adtsData.count != 0 {
-//                print("AacParser result adtsData: \(adtsData)")
+//            let auData = aacParser.processRtpPacketAndGetSample(data: rtpPacket)
+//            if auData.count != 0 {
+//                print("AacParser result adtsData: \(auData)")
 //            }
 //        }
     }
+    
+    // Audio RTP payload의 구조:
+    // AU Header1 + AU Header2 + AU Header3 .... + AU HeaderN + AU Data1 + AU Data2 + AU Data3 ... + AU DataN
+    // AU Header의 상위 13bit가 AU Data의 Length이다. (16bit 값 >> 3 으로 구할 수 있음)
+    
+    func parseRTPAudioPayload(payload: Data) -> [Data] {
+        var offset = 0
+        let auHeaderBytes = payload[0...1] // AU Header Length (2 bytes)
+        let auHeaderLength = UInt16(auHeaderBytes[0]) << 8 | UInt16(auHeaderBytes[1]) // Big-Endian 변환
+        print("AU Header Length: \(auHeaderLength) bits")
+        print("AU Header Length in bytes: \(auHeaderLength / 8) bytes")
+        
+        // 개별 바이트를 0xNN 형식으로 출력
+        //print(String(format: "AU Header Bytes: 0x%02X 0x%02X", auHeaderBytes[0], auHeaderBytes[1]))
+
+        // 변환된 UInt16 값을 0xNNNN 형식으로 출력
+        //print(String(format: "AU Header Length: 0x%04X", auHeaderLength))
+        
+        // 상위 13비트 추출 (16비트 값에서 상위 13비트만 가져오기)
+        //let upper13Bits = auHeaderLength >> 3
+        // 비트 스트링 출력
+        //let bitString = String(auHeaderLength, radix: 2).padding(toLength: 16, withPad: "0", startingAt: 0)
+        //let upper13BitString = String(upper13Bits, radix: 2).padding(toLength: 13, withPad: "0", startingAt: 0)
+        // 로그 출력
+        //print("AU Header Bytes: \(auHeaderBytes.map { String(format: "0x%02X", $0) }.joined(separator: " "))")
+        //print("AU Header Value (16-bit): 0x\(String(format: "%04X", auHeaderLength)) (\(bitString) in binary)")
+        //print("Upper 13 Bits: \(upper13Bits) (\(upper13BitString) in binary)")
+        
+//        // RTP Payload에서 AU Header Length (16비트) 읽기
+//        let headerBytes = payload.prefix(2) // 처음 2바이트
+//        let auHeaderLength = UInt16(bigEndian: headerBytes.withUnsafeBytes { $0.load(as: UInt16.self) })
+//
+//        // 0xNN 방식으로 로그 찍기
+//        print(String(format: "AU Header Length : 0x%04X bits", auHeaderLength))
+//        print("AU Header Length : \(auHeaderLength / 8) bytes")
+        print("Payload Size: \(payload.count) bytes")
+        
+        // AU Header 전체 읽기 (비트 단위 -> 바이트 단위 변환)
+        guard payload.count >= 2 else { return [] }
+        let auHeaderLengthBits = Int(UInt16(bigEndian: payload.withUnsafeBytes{ $0.load(as: UInt16.self)}))
+        let auHeaderLengthBytes = auHeaderLengthBits / 8 // (바이트 단위 변환)
+        print("auHeaderLengthBytes: \(auHeaderLengthBytes)")
+        offset += 2
+        
+        // AU Header Section이 payload 크기를 초과하면 오류
+        guard payload.count >= offset + auHeaderLengthBytes else { return [] }
+        
+        var auLength: [Int] = []
+        
+        // AU Header 에서 각 AU data Length 길이 추출 (16비트씩 읽음)
+        while offset + 2 <= 2 + auHeaderLengthBytes {
+            let auHeaderValue = UInt16(bigEndian: payload.subdata(in: offset..<offset + 2).withUnsafeBytes { $0.load(as: UInt16.self) })
+            // AU-Length: 상위 13비트
+            let auDataLength = Int(auHeaderValue >> 3) / 8
+            auLength.append(auDataLength)
+            
+            offset += 2 // 16비트 (2바이트)씩 증가
+        }
+        print("auLength list: \(auLength)")
+        // AU Data 읽기 (AU Header 다음 부터)
+        var auDataList: [Data] = []
+        for length in auLength {
+            guard offset + length <= payload.count else { return [] }
+            let auData = payload.subdata(in: offset..<offset + length)
+            auDataList.append(auData)
+            offset += length
+        }
+        
+        return auDataList
+    }
+    
     
     // inout : 메모리 참조 변수
     //         상수 파라미터를 변수로 사용할 때 inout 사용. (copy in, copy out, 매개변수 복사하여 값 변경 후 다시 원본 변수에 재할당)
@@ -1297,8 +1438,8 @@ extension RTSPClient {
         ]
     }
     
-    func addAdtsHeader(_ data: [UInt8], config: [UInt8]) -> Data {
-        guard data.count > 0 else { return Data() }
+    func addAdtsHeader(_ data: [UInt8], config: [UInt8]) -> [UInt8] {
+        guard data.count > 0 else { return [] }
         
         let profile = (config[0] >> 3) - 1
         let sampleRateIndex = ((config[0] & 0x07) << 1) | ((config[1] & 0x80) >> 7)
@@ -1321,8 +1462,8 @@ extension RTSPClient {
             0xFC // BufferFullness & Number of AAC frames
         ]
         
-        var adtsData = Data(adtsHeader)
-        adtsData.append(Data(data))
+        var adtsData = adtsHeader
+        adtsData += data
         
         return adtsData
     }

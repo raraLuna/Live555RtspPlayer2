@@ -50,7 +50,7 @@ class AudioDecoder {
             return nil
         }
         var sourceFormat = sourceFormatDesc
-        
+        print("configureDecoder sourceFormat: \(sourceFormat)")
         destFormat.mSampleRate = sampleRate
         destFormat.mFormatID = kAudioFormatLinearPCM
         destFormat.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked
@@ -60,7 +60,11 @@ class AudioDecoder {
         destFormat.mBytesPerFrame = destFormat.mBitsPerChannel / 8 * destFormat.mChannelsPerFrame
         destFormat.mBytesPerPacket = destFormat.mBytesPerFrame * destFormat.mFramesPerPacket
         
-        guard let audioClassDesc = getAudioClassDescription(type: destFormatID, manufacturer: kAppleHardwareAudioCodecManufacturer) else {
+        printAudioStreamBasicDescription(sourceFormat)
+        printAudioStreamBasicDescription(destFormat)
+        
+        guard let audioClassDesc = getAudioClassDescription(type: destFormatID, manufacturer: kAppleSoftwareAudioCodecManufacturer) else {
+            print("configureDecoder audioClassDesc failed")
             return nil
         }
         
@@ -77,10 +81,12 @@ class AudioDecoder {
     }
     
     private func decodeFormat(converter: AudioConverterRef?, sourceBuffer: UnsafeMutableRawPointer, sourceBufferSize: UInt32, sourceFormat: AudioStreamBasicDescription, destFormat: AudioStreamBasicDescription, completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
-        guard let converter = converter else { return }
+        print("decodeFormat() called")
+        guard let converter = converter else { print("converter is nil"); return }
         
         let ioOutputDataPackets: UInt32 = 1024
         let outputBufferSize = ioOutputDataPackets * destFormat.mChannelsPerFrame * destFormat.mBytesPerFrame
+        print("outputBufferSize: \(outputBufferSize)")
         
         var fillBufferList = AudioBufferList()
         fillBufferList.mNumberBuffers = 1
@@ -99,12 +105,14 @@ class AudioDecoder {
                                      sourceBuffer: sourceBuffer,
                                      packetDesc: packetDescPointer
         )
+        print("userInfo: \(userInfo)")
         
         // `outputPacketDesc` 메모리 할당
         let outputPacketDescPointer = UnsafeMutablePointer<AudioStreamPacketDescription>.allocate(capacity: 1)
         outputPacketDescPointer.initialize(to: AudioStreamPacketDescription())
 
         var numPackets = ioOutputDataPackets
+        print("numPackets: \(numPackets)")
 
         // `AudioConverterFillComplexBuffer` 호출
         let status = AudioConverterFillComplexBuffer(
@@ -157,12 +165,32 @@ class AudioDecoder {
     
     // MARK: Utility Functions
     private func getAudioClassDescription(type: AudioFormatID, manufacturer: UInt32) -> UnsafePointer<AudioClassDescription>? {
+        print("getAudioClassDescription() called")
+        print("getAudioClassDescription type:\(type), manufacturer: \(manufacturer)")
         var size: UInt32 = 0
         var decoderSpecific = type
-        var status = AudioFormatGetPropertyInfo(kAudioFormatProperty_Decoders, UInt32(MemoryLayout.size(ofValue: decoderSpecific)), &decoderSpecific, &size)
+        
+        let formatID = decoderSpecific
+        let formatString = String(format: "%c%c%c%c",
+                                  (formatID >> 24) & 0xFF,
+                                  (formatID >> 16) & 0xFF,
+                                  (formatID >> 8) & 0xFF,
+                                  formatID & 0xFF)
+        print("AudioFormatID: \(formatString)")
+
+        let manufacturerID = (manufacturer)
+        let manufacturerString = String(format: "%c%c%c%c",
+                                        (manufacturerID >> 24) & 0xFF,
+                                        (manufacturerID >> 16) & 0xFF,
+                                        (manufacturerID >> 8) & 0xFF,
+                                        manufacturerID & 0xFF)
+        print("Manufacturer: \(manufacturerString)")
+
+        //let status = AudioFormatGetPropertyInfo(kAudioFormatProperty_Decoders, UInt32(MemoryLayout.size(ofValue: decoderSpecific)), &decoderSpecific, &size)
+        let status = AudioFormatGetPropertyInfo(kAudioFormatProperty_Decoders, UInt32(MemoryLayout<AudioFormatID>.size), &decoderSpecific, &size)
         
         if status != noErr || size == 0 {
-            print("Failed to get audio decoder info")
+            print("Failed to get audio decoder info. status: \(status), size: \(size)")
             return nil
         }
         
@@ -181,7 +209,7 @@ class AudioDecoder {
         // 1. $0.mSubType == type && $0.mManufacturer == manuFacturer 조건을 만족하는 첫번째 요소를 찾음
         // 2. map은 옵셔널 바인딩과 같은 역할을 함. first가 nil이 아니라면 클로저 내부 코드를 실행. (flatMap도 nil일 경우를 대응)
         // 3. desc의 메모리 주소를 UnsafePointer<AudioClassDescription>으로 변환함
-        return descriptions.first { $0.mSubType == type && $0.mManufacturer == manuFacturer }.flatMap { desc -> UnsafePointer<AudioClassDescription>? in
+        return descriptions.first { $0.mSubType == type && $0.mManufacturer == manufacturer }.flatMap { desc -> UnsafePointer<AudioClassDescription>? in
             return withUnsafePointer(to: desc) { $0 }
         }
     }
@@ -194,7 +222,7 @@ class AudioDecoder {
             }
         }
         print(String(format: "Sample Rate:         %10.0f", asbd.mSampleRate))
-        print(String(format: "Format ID:           %10s", formatStr))
+        print(String(format: "Format ID:           %s".replacingOccurrences(of: "%s", with: "%@"), formatStr))
         print(String(format: "Format Flags:        %10X", asbd.mFormatFlags))
         print(String(format: "Bytes per Packet:    %10d", asbd.mBytesPerPacket))
         print(String(format: "Frames per Packet:   %10d", asbd.mFramesPerPacket))

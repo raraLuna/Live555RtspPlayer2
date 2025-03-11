@@ -9,6 +9,31 @@ import Foundation
 import CoreVideo
 
 class MakeDumpFile {
+    static func dumpRTPPacket(_ packet: [UInt8], to filePath: String) {
+        print("Start writing RTP dump file")
+
+        let fileURL = URL(fileURLWithPath: filePath)
+        
+        // 파일이 없으면 생성
+        if !FileManager.default.fileExists(atPath: fileURL.path) {
+            FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
+        }
+
+        // 파일 핸들 열기
+        guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
+            print("Failed to open file for writing")
+            return
+        }
+
+        // 데이터 변환 후 파일에 기록
+        let data = Data(packet)
+        fileHandle.seekToEndOfFile()  // 기존 파일에 추가
+        fileHandle.write(data)
+        fileHandle.closeFile()
+
+        print("RTP Dump saved at \(filePath)")
+    }
+    
     static func dumpCVPixelBuffer(_ pixelBuffer: CVPixelBuffer, to filePath: String) {
         print("start make dump file")
         // 픽셀 버퍼로의 접근 막음
