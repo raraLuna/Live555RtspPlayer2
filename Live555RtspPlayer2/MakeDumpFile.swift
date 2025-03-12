@@ -18,6 +18,13 @@ class MakeDumpFile {
         if !FileManager.default.fileExists(atPath: fileURL.path) {
             FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
         }
+//        else {
+//            do {
+//                try FileManager.default.removeItem(at: fileURL)
+//            } catch {
+//                print("failed remove existing file")
+//            }
+//        }
 
         // 파일 핸들 열기
         guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
@@ -27,7 +34,7 @@ class MakeDumpFile {
 
         // 데이터 변환 후 파일에 기록
         let data = Data(packet)
-        fileHandle.seekToEndOfFile()  // 기존 파일에 추가
+        //fileHandle.seekToEndOfFile()  // 기존 파일에 추가
         fileHandle.write(data)
         fileHandle.closeFile()
 

@@ -167,7 +167,7 @@ class AudioDecoder {
     private func getAudioClassDescription(type: AudioFormatID, manufacturer: UInt32) -> UnsafePointer<AudioClassDescription>? {
         print("getAudioClassDescription() called")
         print("getAudioClassDescription type:\(type), manufacturer: \(manufacturer)")
-        var size: UInt32 = 0
+        var propertyDataSize: UInt32 = 0
         var decoderSpecific = type
         
         let formatID = decoderSpecific
@@ -186,18 +186,26 @@ class AudioDecoder {
                                         manufacturerID & 0xFF)
         print("Manufacturer: \(manufacturerString)")
 
-        //let status = AudioFormatGetPropertyInfo(kAudioFormatProperty_Decoders, UInt32(MemoryLayout.size(ofValue: decoderSpecific)), &decoderSpecific, &size)
-        let status = AudioFormatGetPropertyInfo(kAudioFormatProperty_Decoders, UInt32(MemoryLayout<AudioFormatID>.size), &decoderSpecific, &size)
         
-        if status != noErr || size == 0 {
-            print("Failed to get audio decoder info. status: \(status), size: \(size)")
+//        func AudioFormatGetPropertyInfo(
+//            _ inPropertyID: AudioFormatPropertyID,
+//            _ inSpecifierSize: UInt32,
+//            _ inSpecifier: UnsafeRawPointer?,
+//            _ outPropertyDataSize: UnsafeMutablePointer<UInt32>
+//        ) -> OSStatus
+        let status = AudioFormatGetPropertyInfo(kAudioFormatProperty_Decoders, UInt32(MemoryLayout.size(ofValue: decoderSpecific)), &decoderSpecific, &propertyDataSize)
+        //let status = AudioFormatGetPropertyInfo(kAudioFormatProperty_Decoders, UInt32(MemoryLayout<AudioFormatID>.size), &decoderSpecific, &size)
+        
+        if status != noErr || propertyDataSize == 0 {
+            print("Failed to get audio decoder info. status: \(status), size: \(propertyDataSize)")
             return nil
         }
+        print("propertyDataSize: \(propertyDataSize)")
         
-        let count = Int(size) / MemoryLayout<AudioClassDescription>.size
+        let count = Int(propertyDataSize) / MemoryLayout<AudioClassDescription>.size
         var descriptions = [AudioClassDescription](repeating: AudioClassDescription(), count: count)
         
-        let status2 = AudioFormatGetProperty(kAudioFormatProperty_Decoders, UInt32(MemoryLayout.size(ofValue: decoderSpecific)), &decoderSpecific, &size, &descriptions)
+        let status2 = AudioFormatGetProperty(kAudioFormatProperty_Decoders, UInt32(MemoryLayout.size(ofValue: decoderSpecific)), &decoderSpecific, &propertyDataSize, &descriptions)
         
         if status2 != noErr {
             print("Failed to get audio decoder property")

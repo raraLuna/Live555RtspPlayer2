@@ -13,12 +13,12 @@ class ViewController: UIViewController {
     @IBOutlet weak var stopRtspBtn: UIButton!
     
     let wasUrl = WasApiInfo.URL_WAS_USA_DEV
-    let userId = "ymchoi@olivendove.com"
+    let userId = "remotestapp@gmail.com"
     let password = "test531!"
     let viewerId = "test531!"
     let userAgent = "03"
     let pushId = "test531!"
-    let camId = "100675"
+    let camId = "100721"
     var sessionId = ""
     var memNo = ""
     var rtspUrl = ""

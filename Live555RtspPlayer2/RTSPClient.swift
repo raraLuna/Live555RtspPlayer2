@@ -563,9 +563,12 @@ extension RTSPClient {
         print("audio config: \(config)")
         //print("audio mode: \(mode)") // ""
         
-        let adtsAudioData = addAdtsHeader(rtpPacket, config: config)
+        let adtsAudioData = processAacRtpPacket(rtpPacket)
         let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("rtp_dump.aac").path()
         MakeDumpFile.dumpRTPPacket(adtsAudioData, to: dumpFilePath)
+        
+        
+        //parseADTSHeader(from: dumpFilePath)
         
         //let rtpPacketUint16 = convertUInt8ToUInt16(rtpPacket)
         //print("UInt16 Data:", rtpPacketUint16.map { String(format: "0x%04X", $0) }.joined(separator: ", "))
@@ -583,9 +586,9 @@ extension RTSPClient {
 //        let aacParser = AacParser(aacMode: mode)
 //        let auData = aacParser.processRtpPacketAndGetSample(data: rtpPacket)
         
-//        let audioDecoder = AACLATMDecoder()
-//        let pcmData = audioDecoder?.decodeAAC(Data(rtpPacket))
-//        print("pcmData: \(String(describing: pcmData?.count))")
+        let audioDecoder = AACLATMDecoder()
+        let pcmData = audioDecoder?.decodeAAC(Data(adtsAudioData))
+        print("pcmData: \(String(describing: pcmData?.count))")
         
         
         
@@ -601,12 +604,12 @@ extension RTSPClient {
 //        
 //                let audioDecoder = AudioDecoder(sourceFormat: sourceFormat, destFormatID: kAudioFormatLinearPCM, sampleRate: 16000, useHardwareDecode: false)
 //        
-//                let sourceData: [UInt8] = addAdtsHeader(rtpPacket, config: config)
-//                let sourceBufferSize = UInt32(sourceData.count)
+//                //let sourceData: [UInt8] = addAdtsHeader(rtpPacket, config: config)
+//                let sourceBufferSize = UInt32(adtsAudioData.count)
 //        
 //                // 메모리 직접 할당
 //                let sourceBuffer = UnsafeMutableRawPointer.allocate(byteCount: Int(sourceBufferSize), alignment: 4)
-//                sourceBuffer.copyMemory(from: sourceData, byteCount: Int(sourceBufferSize))
+//                sourceBuffer.copyMemory(from: adtsAudioData, byteCount: Int(sourceBufferSize))
 //        
 //                audioDecoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
 //                    print("오디오 디코딩 완료!")
@@ -1420,22 +1423,93 @@ extension RTSPClient {
         
         //let payload = Array(rtpPacket[12...]) // RTP 헤더 제거
         //let adtsHeader = createAdtsHeader(for: payload.count)
-        let adtsHeader = createAdtsHeader(for: rtpPacket.count)
+        
+        let adtsHeader = createAdtsHeader16000Mono(for: rtpPacket.count)
         
         return adtsHeader + rtpPacket
     }
     
     // ADTS 헤더 생성 (AAC-LC, 44.1kHz, 2채널 예제)
-    func createAdtsHeader(for aacFrameSize: Int) -> [UInt8] {
-        let fullLength = aacFrameSize + 7
+//    func createAdtsHeader44100Stereo(for aacFrameSize: Int) -> [UInt8] {
+//        let fullLength = aacFrameSize + 7
+//        return [
+//            0xFF, 0xF1, // Sync word
+//            0x50,       // Profile (AAC-LC), (Sampling Freq Index (44.1kHz), Private Bit
+//            0x80,       // Channel config (streo)
+//            UInt8(fullLength >> 6),   // Frame Length (high)
+//            UInt8((fullLength & 0x3F) << 2),   // Frame Length (low
+//            0xFC        // CRC disabled
+//        ]
+//    }
+    
+    // https://wiki.multimedia.cx/index.php?title=ADTS
+    // https://stackoverflow.com/questions/18862715/how-to-generate-the-aac-adts-elementary-stream-with-android-mediacodec
+    func createAdtsHeader16000Mono(for aacFrameSize: Int) -> [UInt8] {
+        let profile: UInt8 = 1 // AAC Main (1), AAC LC (2), AAC SSR (3), AAC LTP (4)
+        let samplingFreqIndex: UInt8 = 0x08 // 16,000 Hz (Table 기준)
+        let channelConfig: UInt8 = 0x01 // Mono (1채널)
+        
+        let fullLength = aacFrameSize + 7 // ADTS + packet 전체 프레임 크기
+
+        // ADTS header
+//        Byte  | Bits               | Description
+//        ------|--------------------|-----------------------------------
+//        0     | 1111 1111         | Syncword (always 0xFFF)
+//        1     | 1111 x xxx        | Syncword + ID + Layer
+//        2     | xx xx x xxx       | Profile + Sampling Frequency Index + Private Bit
+//        3     | x xxx xxxx        | Channel Configuration + Original/Copy + Home
+//        4     | xxxx xxxx         | Frame Length (High)
+//        5     | xxxx xxxx         | Frame Length (Middle) + Buffer Fullness (High)
+//        6     | xxxx xx xx        | Buffer Fullness (Low) + Number of Raw Data Blocks
+
+        var adtsHeader = [UInt8](repeating: 0, count: 7)
+        adtsHeader[0] = 0xFF
+        adtsHeader[1] = 0xF1
+        adtsHeader[2] = (profile << 6) | (samplingFreqIndex << 2) | (0 << 1) | 0
+        adtsHeader[3] = ((channelConfig & 3) << 6) | UInt8(fullLength >> 11)
+        adtsHeader[4] = UInt8((fullLength & 0x7FF) >> 3)
+        adtsHeader[5] = ((UInt8(fullLength & 7) << 5) | 0x1F)
+        adtsHeader[6] = 0xFC
+//        adtsHeader[2] = ((profile - 1) << 6) | (samplingFreqIndex << 2) | (channelConfig >> 2)
+//        adtsHeader[3] = ((channelConfig & 3) << 6) | UInt8(fullLength >> 11)
+//        adtsHeader[4] = UInt8((fullLength & 0x7FF) >> 3)
+//        adtsHeader[5] = ((UInt8(fullLength & 7) << 5) | 0x1F)
+//        adtsHeader[6] = 0xFC
+        
+        print("adtsHeader created: \(adtsHeader)")
+        print("ADTS Header: \(adtsHeader.map { String(format: "0x%02X", $0) }.joined(separator: " "))")
+        
+        parseAdtsHeader(from: Data(adtsHeader))
+        
+//        let profileResult = (adtsHeader[2] >> 6) & 0x3
+//        let samplingIndexResult = (adtsHeader[2] >> 2) & 0xF
+//        let channelConfigResult = ((adtsHeader[2] & 0x1) << 2) | (adtsHeader[3] >> 6)
+//
+//        print("Profile: \(profileResult)")
+//        print("Sampling Freq Index: \(samplingIndexResult)")
+//        print("Channel Config: \(channelConfigResult)")
+
+
+        return adtsHeader
+//        return [
+//            0xFF,
+//            0xF9,
+//            (((profile - 1) << 6) + (samplingFreqIndex << 2) + (channelConfig >> 2)),
+//            (((channelConfig & 3) << 6) + UInt8((aacFrameSize >> 11))),
+//            UInt8((aacFrameSize & 0x7FF) >> 3),
+//            UInt8(((aacFrameSize & 7) << 5) + 0x1F),
+//            0xFC
+//        ]
+        /*
         return [
-            0xFF, 0xF1, // Sync word
-            0x50,       // Profile (AAC-LC), (Sampling Freq Index (44.1kHz), Private Bit
-            0x80,       // Channel config (streo)
-            UInt8(fullLength >> 6),   // Frame Length (high)
-            UInt8((fullLength & 0x3F) << 2),   // Frame Length (low
-            0xFC        // CRC disabled
+            0xFF, 0xF1, // Sync word + MPEG-4 + Layer + Protection absent
+            (profile << 6) | (samplingFreqIndex << 2) | (0 << 1) | 0, // Profile + Sampling Freq + Private Bit
+            (channelConfig << 4) | UInt8(((fullLength >> 11) & 0x03)), // Channel Config + Frame Length (high bits)
+            UInt8((fullLength >> 3) & 0xFF), // Frame Length (middle bits)
+            UInt8((fullLength & 0x07) << 5) | 0x1F, // Frame Length (low bits) + Buffer fullness (high bits)
+            0xFC // Buffer fullness (low bits) + No raw blocks
         ]
+         */
     }
     
     func addAdtsHeader(_ data: [UInt8], config: [UInt8]) -> [UInt8] {
@@ -1470,6 +1544,163 @@ extension RTSPClient {
     
     func getPayloadType(from rtpPacket: [UInt8]) -> Int {
         return Int(rtpPacket[1] & 0x7F) // 2번째 바이트에서 7비트 추출함
+    }
+    
+    func parseAdtsHeader(from data: Data) {
+        guard data.count >= 7 else {
+            print("❌ 데이터가 ADTS 헤더 크기(7바이트)보다 작음")
+            return
+        }
+        
+        let hdr = [UInt8](data.prefix(7))  // ADTS 헤더 (7바이트)
+        
+        // Syncword 확인 (0xFFF)
+        let syncword = (UInt16(hdr[0]) << 4) | (UInt16(hdr[1]) >> 4)
+        guard syncword == 0xFFF else {
+            print("❌ 잘못된 ADTS 헤더 (Syncword 오류)")
+            return
+        }
+        
+        let id = (hdr[1] >> 3) & 0b1  // MPEG Version (0: MPEG-4, 1: MPEG-2)
+        let layer = (hdr[1] >> 1) & 0b11  // Layer (항상 0)
+        let protectionAbsent = hdr[1] & 0b1  // 1: CRC 없음, 0: CRC 있음
+        let profile = (hdr[2] >> 6) & 0b11  // AAC Profile (0: Main, 1: LC, 2: SSR, 3: LTP)
+        let samplingFreqIdx = (hdr[2] >> 2) & 0b1111  // 샘플링 주파수 인덱스
+        let privateBit = (hdr[2] >> 1) & 0b1  // Private Bit
+        let channelConfig = ((hdr[2] & 0b1) << 2) | (hdr[3] >> 6)  // 채널 설정 (1~7)
+        let originalCopy = (hdr[3] >> 5) & 0b1  // 원본 여부
+        let home = (hdr[3] >> 4) & 0b1  // Home
+        
+        // 프레임 길이 계산 (13비트)
+        let frameLength = ((UInt16(hdr[3] & 0b11) << 11) | (UInt16(hdr[4]) << 3) | (UInt16(hdr[5]) >> 5))
+        
+        // ADTS 버퍼 충만도 (11비트)
+        let adtsBufferFullness = ((UInt16(hdr[5] & 0b1_1111) << 6) | (UInt16(hdr[6]) >> 2))
+        
+        // Raw Data Blocks 개수 (2비트)
+        let numRawDataBlocks = hdr[6] & 0b11
+        
+        // 로그 출력
+        print("🔍 **ADTS Header Parsing**")
+        print("🔹 ID: \(id) (\(id == 0 ? "MPEG-4" : "MPEG-2"))")
+        print("🔹 Layer: \(layer) (항상 0)")
+        print("🔹 Protection Absent: \(protectionAbsent) (\(protectionAbsent == 1 ? "No CRC" : "CRC Present"))")
+        print("🔹 Profile: \(profile) (\(aacProfileDescription(Int(profile))))")
+        print("🔹 Sampling Frequency Index: 0x\(String(samplingFreqIdx, radix: 16)) (\(samplingFreqHz(Int(samplingFreqIdx))) Hz)")
+        print("🔹 Channel Configuration: \(channelConfig) (\(channelConfigDescription(Int(channelConfig))))")
+        print("🔹 Frame Length: \(frameLength) bytes")
+        print("🔹 ADTS Buffer Fullness: \(adtsBufferFullness)")
+        print("🔹 Number of Raw Data Blocks: \(numRawDataBlocks)")
+    }
+
+    // AAC Profile 설명 함수
+    func aacProfileDescription(_ profile: Int) -> String {
+        switch profile {
+        case 0: return "AAC Main"
+        case 1: return "AAC LC (Low Complexity)"
+        case 2: return "AAC SSR (Scalable Sample Rate)"
+        case 3: return "AAC LTP (Long Term Prediction)"
+        default: return "Unknown"
+        }
+    }
+
+    // 샘플링 주파수 인덱스 매핑
+    func samplingFreqHz(_ index: Int) -> Int {
+        let freqTable = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350]
+        return (index < freqTable.count) ? freqTable[index] : -1
+    }
+
+    // 채널 설정 설명 함수
+    func channelConfigDescription(_ config: Int) -> String {
+        let configTable = [
+            "Defined in AOT Spec", "Mono", "Stereo", "3.0", "4.0", "5.0", "5.1", "7.1"
+        ]
+        return (config > 0 && config < configTable.count) ? configTable[config] : "Unknown"
+    }
+
+    
+    func parseADTSHeader(from filePath: String) {
+        guard let fileHandle = FileHandle(forReadingAtPath: filePath) else {
+            print("파일을 열 수 없습니다: \(filePath)")
+            return
+        }
+        
+        var frameNo = 1
+
+        while true {
+            guard let data = try? fileHandle.read(upToCount: 7), data.count == 7 else {
+                break
+            }
+            
+            let hdr = data.map { UInt8($0) }
+
+            // adts_fixed_header() 파싱
+            let syncword = (UInt16(hdr[0]) << 4) | (UInt16(hdr[1]) >> 4) // bslbf(12)
+            if syncword != 0b111111111111 {
+                print("Invalid `syncword` for frame \(frameNo)")
+                break
+            }
+
+            let ID                 = (hdr[1] >> 3) & 0b1   // bslbf(1)
+            let layer              = (hdr[1] >> 1) & 0b11  // uimsbf(2)
+            let protectionAbsent   = hdr[1] & 0b1         // bslbf(1)
+            let profile            = (hdr[2] >> 6) & 0b11 // uimsbf(2)
+            let samplingFreqIdx    = (hdr[2] >> 2) & 0b1111 // uimsbf(4)
+            let privateBit         = (hdr[2] >> 1) & 0b1  // bslbf(1)
+            let channelConfig      = ((hdr[2] & 0b1) << 2) | (hdr[3] >> 6)  // uimsbf(3)
+            let originalCopy       = (hdr[3] >> 5) & 0b1  // bslbf(1)
+            let home               = (hdr[3] >> 4) & 0b1  // bslbf(1)
+
+            // adts_variable_header() 파싱
+            let copyrightIdBit     = (hdr[3] >> 3) & 0b1
+            let copyrightIdStart   = (hdr[3] >> 2) & 0b1
+            let frameLength        = ((UInt16(hdr[3] & 0b11) << 11) | (UInt16(hdr[4]) << 3) | (UInt16(hdr[5]) >> 5))
+            let adtsBufFullness    = ((UInt16(hdr[5] & 0b11111) << 6) | (UInt16(hdr[6]) >> 2))
+            let numRawDataBlocks   = hdr[6] & 0b11
+
+            var crcCheck: UInt16 = 0
+            var size = Int(frameLength) - 7
+
+            if numRawDataBlocks == 0 {
+                // adts_error_check()
+                if protectionAbsent == 0, let crcData = try? fileHandle.read(upToCount: 2), crcData.count == 2 {
+                    crcCheck = UInt16(crcData[0]) << 8 | UInt16(crcData[1]) // rpchof(16)
+                    size -= 2
+                }
+                // raw_data_block()
+                _ = try? fileHandle.read(upToCount: size)
+            } else {
+                // adts_header_error_check()
+                if protectionAbsent == 0, let crcData = try? fileHandle.read(upToCount: 2), crcData.count == 2 {
+                    crcCheck = UInt16(crcData[0]) << 8 | UInt16(crcData[1]) // rpchof(16)
+                    size -= (2 * Int(numRawDataBlocks)) + 2
+                }
+                // {raw_data_block() + adts_raw_data_block_error_check()} x N
+                _ = try? fileHandle.read(upToCount: size)
+            }
+
+            // 첫 번째 프레임이면 헤더 정보 출력
+            if frameNo == 1 {
+                print("adts_fixed_header():")
+                print("ID=\(ID)")
+                print("layer=\(String(layer, radix: 2))")
+                print("protection_absent=\(protectionAbsent)")
+                print("profile=\(profile)")
+                print("sampling_frequency_index=0x\(String(samplingFreqIdx, radix: 16))")
+                print("private_bit=\(privateBit)")
+                print("channel_configuration=\(channelConfig)")
+                print("original/copy=\(originalCopy)")
+                print("home=\(home)")
+                print("adts_variable_header():")
+            }
+
+            // ADTS 변수 헤더 출력
+            print("#\(frameNo),\(copyrightIdBit),\(copyrightIdStart),\(frameLength),\(adtsBufFullness),\(numRawDataBlocks),0x\(String(format: "%04X", crcCheck))")
+
+            frameNo += 1
+        }
+
+        fileHandle.closeFile()
     }
 }
 
