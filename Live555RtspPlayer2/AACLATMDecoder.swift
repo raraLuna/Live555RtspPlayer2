@@ -30,7 +30,7 @@ class AACLATMDecoder {
         inputFormat.mSampleRate = 16000
         inputFormat.mFormatID = kAudioFormatMPEG4AAC
         inputFormat.mFormatFlags = 0 // AAC-LATM(RTP)에서 주로 사용됨
-        inputFormat.mFramesPerPacket = 1024
+        inputFormat.mFramesPerPacket = 1024 // 프레임당 샘플 수: 1024 (일반적인 AAC 설정)
         inputFormat.mChannelsPerFrame = 1
         inputFormat.mBitsPerChannel = 0
         inputFormat.mBytesPerPacket = 0
@@ -44,8 +44,8 @@ class AACLATMDecoder {
         outputFormat.mFramesPerPacket = 1
         outputFormat.mChannelsPerFrame = 1
         outputFormat.mBitsPerChannel = 16
-        outputFormat.mBytesPerPacket = 2
-        outputFormat.mBytesPerFrame = 2
+        outputFormat.mBytesPerPacket = 2 // (16bit PCM이므로 2bytes)
+        outputFormat.mBytesPerFrame = 2 // (16bit PCM이므로 2bytes)
         
         let status = AudioConverterNew(&inputFormat, &outputFormat, &converter)
         
@@ -57,21 +57,25 @@ class AACLATMDecoder {
         }
     }
     
+    // 입력 데이터 공급을 위한 콜백 함수를 설정
+    // AudioConverter는 입력 데이터를 다 처리할 때까지 AudioConverterFillComplexBuffer를 여러번 호출함
     private let inputDataCallback: AudioConverterComplexInputDataProc = { (
         inAudioConverter,
-        ioNumberDataPackets,
-        ioData,
-        outDataPacketDescription,
-        inUserData
+        ioNumberDataPackets, // 변환할 패킷 개수
+        ioData, // 변환기가 사용할 입력 버퍼(AudioBufferList)를 전달하는 포인터
+        outDataPacketDescription, // 패킷의 세부 정보를 담을 구조체 (AAC는 가변 길이 패킷을 가짐)
+        inUserData // 콜백이 실행될 때 AACLATMDecoder 인스턴스를 참조하기 위한 포인터
     ) -> OSStatus in
         guard let inUserData = inUserData else { return -1 }
         let decoder = Unmanaged<AACLATMDecoder>.fromOpaque(inUserData).takeUnretainedValue()
         print("decoder: \(decoder)")
-        print("inAudioConverter: \(inAudioConverter)\nioNumberDataPackets: \(ioNumberDataPackets)\nioData: \(ioData)\noutDataPacketDescription: \(String(describing: outDataPacketDescription))\ninUserData: \(inUserData)")
+        //print("inAudioConverter: \(inAudioConverter)\nioNumberDataPackets: \(ioNumberDataPackets)\nioData: \(ioData)\noutDataPacketDescription: \(String(describing: outDataPacketDescription))\ninUserData: \(inUserData)")
         
         print("decoder.currentPacketOffset: \(decoder.currentPacketOffset)")
         print("decoder.inputData.count: \(decoder.inputData.count)")
         print("Int(ioNumberDataPackets.pointee): \(Int(ioNumberDataPackets.pointee))")
+        
+        // currentPacketOffset이 inpudata.count보다 작아야 변환할 데이터가 남아있는 것
         guard decoder.currentPacketOffset < decoder.inputData.count else {
             ioNumberDataPackets.pointee = 0
             return -1
@@ -86,13 +90,31 @@ class AACLATMDecoder {
         let packetSize = min(decoder.inputData.count - decoder.currentPacketOffset, Int(ioNumberDataPackets.pointee) * 2)
         print("packetSize: \(packetSize)")
         
+        if packetSize == 0 {
+            ioNumberDataPackets.pointee = 0
+            return -1 // 변환 종료
+        }
+        
+//        if let existingData = ioData.pointee.mBuffers.mData {
+//            existingData.deallocate()
+//        }
+        
+//        if let existingData = ioData.pointee.mBuffers.mData {
+//            if malloc_size(existingData) > 0 { // 메모리가 유효한지 확인
+//                existingData.deallocate()
+//            }
+//        }
+        
         ioData.pointee.mBuffers.mDataByteSize = UInt32(packetSize)
         ioData.pointee.mBuffers.mData = UnsafeMutableRawPointer.allocate(byteCount: packetSize, alignment: 1)
         decoder.inputData.copyBytes(to: ioData.pointee.mBuffers.mData!.assumingMemoryBound(to: UInt8.self), from: decoder.currentPacketOffset..<decoder.currentPacketOffset + packetSize)
+        print("decoder.inputData.copyBytes finished")
         
         decoder.currentPacketOffset += packetSize
         // 일반적으로 AAC-LATM의 1 패킷 크기를 2 바이트로 가정하여 packetSize / 2를 계산
         ioNumberDataPackets.pointee = UInt32(packetSize / 2)
+        
+        print("checkpoint ioNumberDataPackets.pointee: \(ioNumberDataPackets.pointee)")
         
         if let outDataPacketDescription = outDataPacketDescription {
             outDataPacketDescription.pointee = UnsafeMutablePointer<AudioStreamPacketDescription>.allocate(capacity: Int(ioNumberDataPackets.pointee))
@@ -102,9 +124,10 @@ class AACLATMDecoder {
                     mVariableFramesInPacket: 0,
                     mDataByteSize: 2
                 )
+                print("outDataPacketDescription.pointee?[\(i)]: \(String(describing: outDataPacketDescription.pointee?[i]))")
             }
         }
-        
+        print("checkpoint inputDataCallback End")
         return noErr
     }
     
@@ -113,17 +136,22 @@ class AACLATMDecoder {
         self.currentPacketOffset = 0
         
         var outputData = Data()
-        var numPacket: UInt32 = 1024
+        //var numPacket: UInt32 = 1024
+        var numPacket: UInt32 = min(1024, UInt32(inputData.count / 2))
         
+        // pcm 데이터를 저장할 AudioBufferList 생성
+        // 16bit PCMa 데이터는 한 샘플당 2 바이트를 차지하므로 numPacket * 2만큼 메모리 할당 
         var bufferList = AudioBufferList(
             mNumberBuffers: 1,
             mBuffers: AudioBuffer(mNumberChannels: 1,
                                   mDataByteSize: numPacket * 2,
                                   mData: UnsafeMutableRawPointer.allocate(byteCount: Int(numPacket * 2), alignment: 1))
         )
+        print("bufferList: \(bufferList)")
         
         let status = AudioConverterFillComplexBuffer(converter!, inputDataCallback, Unmanaged.passUnretained(self).toOpaque(), &numPacket, &bufferList, nil)
-
+        
+        print("checkpoint AudioConverterFillComplexBuffer End")
         if status == noErr {
             outputData.append(bufferList.mBuffers.mData!.assumingMemoryBound(to: UInt8.self), count: Int(numPacket * 2))
         } else {
@@ -132,8 +160,7 @@ class AACLATMDecoder {
         
         
         return outputData
-    }
-        
+    }  
 }
 
 

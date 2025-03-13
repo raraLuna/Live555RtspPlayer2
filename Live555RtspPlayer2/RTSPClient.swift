@@ -563,12 +563,21 @@ extension RTSPClient {
         print("audio config: \(config)")
         //print("audio mode: \(mode)") // ""
         
-        let adtsAudioData = processAacRtpPacket(rtpPacket)
-        let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("rtp_dump.aac").path()
-        MakeDumpFile.dumpRTPPacket(adtsAudioData, to: dumpFilePath)
+        //let adtsAudioData = processAacRtpPacket(rtpPacket)
+
+        let configStr = config.map { String(format: "%02X", $0) }.joined()
         
+        print("configStr: \(configStr)")
+        guard let streamMuxConfig = convertAudioSpecificConfigToStreamMuxConfig(configStr) else {
+            return
+        }
+        print("Converted StreamMuxConfig: \(streamMuxConfig.map { String(format: "%02X", $0) }.joined())")
         
-        //parseADTSHeader(from: dumpFilePath)
+//        let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("rtp_dump.aac").path()
+//        MakeDumpFile.dumpRTPPacket([UInt8](aacData), to: dumpFilePath)
+//        
+//        
+//        parseADTSHeader(from: dumpFilePath)
         
         //let rtpPacketUint16 = convertUInt8ToUInt16(rtpPacket)
         //print("UInt16 Data:", rtpPacketUint16.map { String(format: "0x%04X", $0) }.joined(separator: ", "))
@@ -586,9 +595,14 @@ extension RTSPClient {
 //        let aacParser = AacParser(aacMode: mode)
 //        let auData = aacParser.processRtpPacketAndGetSample(data: rtpPacket)
         
-        let audioDecoder = AACLATMDecoder()
-        let pcmData = audioDecoder?.decodeAAC(Data(adtsAudioData))
-        print("pcmData: \(String(describing: pcmData?.count))")
+        
+        //let channelCount = parseLATMHeader(Data(rtpPacket))
+        //print("channelCount: \(channelCount)")
+        
+        
+//        let audioDecoder = AACLATMDecoder()
+//        let pcmData = audioDecoder?.decodeAAC(Data(aacData))
+//        print("pcmData: \(String(describing: pcmData?.count))")
         
         
         
@@ -1546,6 +1560,23 @@ extension RTSPClient {
         return Int(rtpPacket[1] & 0x7F) // 2번째 바이트에서 7비트 추출함
     }
     
+    // 딥시크의 대답
+    func createADTSHeader(frameLength: Int) -> Data {
+        // ADTS 헤더 생성 (예: 7바이트)
+        var adtsHeader = Data(count: 7)
+        
+        // ADTS 헤더 설정 (예: 프레임 길이, 샘플 레이트, 채널 수 등)
+        adtsHeader[0] = 0xFF
+        adtsHeader[1] = 0xF1
+        adtsHeader[2] = 0x50
+        adtsHeader[3] = 0x80
+        adtsHeader[4] = UInt8((frameLength + 7) >> 3)
+        adtsHeader[5] = UInt8(((frameLength + 7) & 0x07) << 5)
+        adtsHeader[6] = 0xFC
+        
+        return adtsHeader
+    }
+    
     func parseAdtsHeader(from data: Data) {
         guard data.count >= 7 else {
             print("❌ 데이터가 ADTS 헤더 크기(7바이트)보다 작음")
@@ -1702,6 +1733,93 @@ extension RTSPClient {
 
         fileHandle.closeFile()
     }
+    
+    func parseLATMHeader(_ data: Data) -> Int {
+        guard data.count > 2 else { return 1 } // 기본값: 모노(1채널)
+        
+        let latmBytes = [UInt8](data)
+        print("latm bytes: \(latmBytes)")
+        // LATM StreamMuxConfig (Variable, 최소 3~4 바이트)
+        let audioMuxVersion = (latmBytes[0] >> 6) & 0x03
+        let numSubframes = (latmBytes[0] >> 3) & 0x07
+        let numProgram = (latmBytes[1] >> 5) & 0x07
+        let numLayer = latmBytes[1] & 0x1F
+        
+        if numLayer > 0 {
+            print("Multi-layer AAC is not supported")
+            return 1
+        }
+        
+        // LATM 헤더에서 AudioSpecificConfig(ASC) 위치 찾기
+        var ascStartIndex = 3 // 기본적으로 3번째 바이트부터 ASC 시작
+        if audioMuxVersion == 1 {
+            ascStartIndex += 1 // audioMuxVersion이 1이면 오프셋 추가
+        }
+
+        // AudioSpecificConfig가 존재하는지 확인
+        guard data.count > ascStartIndex + 1 else {
+            print("LATM Header is too short to contain AudioSpecificConfig")
+            return 1
+        }
+
+        let ascData = Data(latmBytes[ascStartIndex..<ascStartIndex + 2])
+        return extractChannelConfiguration(from: ascData)
+    }
+    
+    func extractChannelConfiguration(from ascData: Data) -> Int {
+        guard ascData.count >= 2 else { return 1 }
+        
+        let ascBytes = [UInt8](ascData)
+        
+        let audioObjectType = (ascBytes[0] >> 3) & 0x1F  // 상위 5비트
+        let samplingFreqIndex = ((ascBytes[0] & 0x07) << 1) | ((ascBytes[1] >> 7) & 0x01) // 4비트
+        let channelConfig = (ascBytes[1] >> 3) & 0x0F  // 4비트 (000001xx)
+        
+        print("🎵 Parsed ASC - AOT: \(audioObjectType), SamplingFreqIndex: \(samplingFreqIndex), Channels: \(channelConfig)")
+        
+        return Int(channelConfig)
+    }
+    
+    /* StreamMuxConfig 구조:
+     1-bit audioMuxVersion
+     1-bit allStreamsSameTimeFraming
+     6-bit numSubFrames
+     4-bit numProgram
+     3-bit numLayer
+     AudioSpecificConfig 포함
+    */
+    func convertAudioSpecificConfigToStreamMuxConfig(_ asc: String) -> Data? {
+        guard let ascData = parseStreamMuxConfigStr(asc) else { return nil }
+
+        var streamMuxConfig = Data()
+        
+        // StreamMuxConfig Header
+        streamMuxConfig.append(0x12) // audioMuxVersion = 0, other default settings
+        streamMuxConfig.append(0x10) // numSubFrames = 0, numProgram = 0, numLayer = 0
+
+        // Append AudioSpecificConfig (ASC) to StreamMuxConfig
+        streamMuxConfig.append(ascData)
+
+        return streamMuxConfig
+    }
+    
+    func parseStreamMuxConfigStr(_ configStr: String) -> Data? {
+        guard configStr.count >= 2 else { return nil }
+
+        var configData = Data()
+        var chars = Array(configStr)
+
+        for i in stride(from: 0, to: chars.count, by: 2) {
+            let hexStr = String(chars[i...i+1])
+            if let byte = UInt8(hexStr, radix: 16) {
+                configData.append(byte)
+            }
+        }
+
+        return configData
+    }
+    
+
 }
 
 
