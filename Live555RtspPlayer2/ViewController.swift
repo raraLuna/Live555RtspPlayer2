@@ -19,6 +19,7 @@ class ViewController: UIViewController {
     let userAgent = "03"
     let pushId = "test531!"
     let camId = "100721"
+    //let camId = "100719"
     var sessionId = ""
     var memNo = ""
     var rtspUrl = ""

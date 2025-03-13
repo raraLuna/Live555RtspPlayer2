@@ -114,6 +114,7 @@ class RTSPClient {
     private let dataAvailable = DispatchSemaphore(value: 0) // 데이터 사용 신호
     private var sps: [UInt8] = []
     private var pps: [UInt8] = []
+    private var audioDumpData: [UInt8] = []
     
     private var audioMode: String = ""
     //private var sdpAudioPT: Int = 0
@@ -558,94 +559,37 @@ extension RTSPClient {
     func parseAudio(rtpHeader: RtpHeader, rtpPacket: [UInt8], sdpInfo: SdpInfo) {
         print("......Audio RTP Parsing......")
         guard let audioTrack = sdpInfo.audioTrack else { return }
-        let config = audioTrack.config
-        let mode = audioTrack.mode
-        print("audio config: \(config)")
-        //print("audio mode: \(mode)") // ""
         
-        //let adtsAudioData = processAacRtpPacket(rtpPacket)
+        print("rtpPacket: \(rtpPacket)")
+        print("rtpPacket.count: \(rtpPacket.count)")
+        //print("Data(rtpPacket): \(Data(rtpPacket))")
 
-        let configStr = config.map { String(format: "%02X", $0) }.joined()
-        
-        print("configStr: \(configStr)")
-        guard let streamMuxConfig = convertAudioSpecificConfigToStreamMuxConfig(configStr) else {
-            return
+        var payload = [UInt8]()
+         
+        // rtpPacket이 FF로 시작하면 2bytes를 제거하고
+        // 그렇지 않으면 1byte를 제거한 뒤 adts header를 만들어 붙임
+        payload = rtpPacket
+        if rtpPacket.starts(with: [255]) {
+            print("rtpPacket start with FF")
+            payload = Array(rtpPacket.dropFirst(2))
+        } else {
+            payload = Array(rtpPacket.dropFirst(1))
         }
-        print("Converted StreamMuxConfig: \(streamMuxConfig.map { String(format: "%02X", $0) }.joined())")
         
-//        let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("rtp_dump.aac").path()
-//        MakeDumpFile.dumpRTPPacket([UInt8](aacData), to: dumpFilePath)
-//        
-//        
-//        parseADTSHeader(from: dumpFilePath)
+        let newPayload = processAacRtpPacket(payload)
+        print("paylaod with adts: \(newPayload)")
+        print("newPayload: \(newPayload.map { String(format: "0x%02X", $0) }.joined(separator: " "))")
         
-        //let rtpPacketUint16 = convertUInt8ToUInt16(rtpPacket)
-        //print("UInt16 Data:", rtpPacketUint16.map { String(format: "0x%04X", $0) }.joined(separator: ", "))
-        // 로그 출력 (0xNN 형식)
-        //print("UInt8 Data:", rtpPacket.map { String(format: "0x%02X", $0) }.joined(separator: ", "))
-        //print("UInt16 Data:", rtpPacketUint16.map { String(format: "0x%02X, 0x%02X", ($0 >> 8) & 0xFF, $0 & 0xFF) }.joined(separator: ", "))
-        //print("audio rtpPacket: \(rtpPacket)")
-        //let auDataList = parseRTPAudioPayload(payload: Data(rtpPacket))
+        self.audioDumpData.append(contentsOf: newPayload)
+        print("self.audioDumpData.count: \(self.audioDumpData.count)")
         
-//        let auDataList = extractAuData(from: Data(rtpPacket), auHeader: auHeaders)
-//        for (index, auData) in auDataList.enumerated() {
-//            print("AU Data \(index): \(auData)")
-//        }
+        let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("rtp_dump.aac").path()
+        MakeDumpFile.dumpRTPPacket(self.audioDumpData, to: dumpFilePath)
         
-//        let aacParser = AacParser(aacMode: mode)
-//        let auData = aacParser.processRtpPacketAndGetSample(data: rtpPacket)
+//        let decoder = AACLATMDecoder()
+//        let pcmData = decoder?.decodeAAC(Data(self.audioDumpData))
+//        print("pcmData : \(pcmData) bytes")
         
-        
-        //let channelCount = parseLATMHeader(Data(rtpPacket))
-        //print("channelCount: \(channelCount)")
-        
-        
-//        let audioDecoder = AACLATMDecoder()
-//        let pcmData = audioDecoder?.decodeAAC(Data(aacData))
-//        print("pcmData: \(String(describing: pcmData?.count))")
-        
-        
-        
-//                var sourceFormat = AudioStreamBasicDescription()
-//                sourceFormat.mSampleRate = 16000
-//                sourceFormat.mFormatID = kAudioFormatMPEG4AAC
-//                sourceFormat.mFormatFlags = 0
-//                sourceFormat.mFramesPerPacket = 1024
-//                sourceFormat.mChannelsPerFrame = 1
-//                sourceFormat.mBitsPerChannel = 0
-//                sourceFormat.mBytesPerPacket = 0
-//                sourceFormat.mBytesPerFrame = 0
-//        
-//                let audioDecoder = AudioDecoder(sourceFormat: sourceFormat, destFormatID: kAudioFormatLinearPCM, sampleRate: 16000, useHardwareDecode: false)
-//        
-//                //let sourceData: [UInt8] = addAdtsHeader(rtpPacket, config: config)
-//                let sourceBufferSize = UInt32(adtsAudioData.count)
-//        
-//                // 메모리 직접 할당
-//                let sourceBuffer = UnsafeMutableRawPointer.allocate(byteCount: Int(sourceBufferSize), alignment: 4)
-//                sourceBuffer.copyMemory(from: adtsAudioData, byteCount: Int(sourceBufferSize))
-//        
-//                audioDecoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
-//                    print("오디오 디코딩 완료!")
-//        
-//                    // 사용 후 메모리 해제
-//                    sourceBuffer.deallocate()
-//                }
-        
-        
-        
-        
-        
-        //let aacDecoder = AACDecoder()
-        //aacDecoder.decodeAACData(Data(rtpPacket))
-        
-//        let aacParser = AacParser(aacMode: self.audioMode)
-//        if rtpPacket.count != 0 {
-//            let auData = aacParser.processRtpPacketAndGetSample(data: rtpPacket)
-//            if auData.count != 0 {
-//                print("AacParser result adtsData: \(auData)")
-//            }
-//        }
     }
     
     // Audio RTP payload의 구조:
@@ -1440,7 +1384,12 @@ extension RTSPClient {
         
         let adtsHeader = createAdtsHeader16000Mono(for: rtpPacket.count)
         
-        return adtsHeader + rtpPacket
+        var adtsHeaderRtpAcc = [UInt8]()
+        adtsHeaderRtpAcc.append(contentsOf: adtsHeader)
+        adtsHeaderRtpAcc.append(contentsOf: rtpPacket)
+        
+        // return adtsHeader + rtpPacket
+        return adtsHeaderRtpAcc
     }
     
     // ADTS 헤더 생성 (AAC-LC, 44.1kHz, 2채널 예제)
@@ -1458,14 +1407,7 @@ extension RTSPClient {
     
     // https://wiki.multimedia.cx/index.php?title=ADTS
     // https://stackoverflow.com/questions/18862715/how-to-generate-the-aac-adts-elementary-stream-with-android-mediacodec
-    func createAdtsHeader16000Mono(for aacFrameSize: Int) -> [UInt8] {
-        let profile: UInt8 = 1 // AAC Main (1), AAC LC (2), AAC SSR (3), AAC LTP (4)
-        let samplingFreqIndex: UInt8 = 0x08 // 16,000 Hz (Table 기준)
-        let channelConfig: UInt8 = 0x01 // Mono (1채널)
-        
-        let fullLength = aacFrameSize + 7 // ADTS + packet 전체 프레임 크기
-
-        // ADTS header
+    // ADTS header
 //        Byte  | Bits               | Description
 //        ------|--------------------|-----------------------------------
 //        0     | 1111 1111         | Syncword (always 0xFFF)
@@ -1475,20 +1417,22 @@ extension RTSPClient {
 //        4     | xxxx xxxx         | Frame Length (High)
 //        5     | xxxx xxxx         | Frame Length (Middle) + Buffer Fullness (High)
 //        6     | xxxx xx xx        | Buffer Fullness (Low) + Number of Raw Data Blocks
-
+    func createAdtsHeader16000Mono(for aacFrameSize: Int) -> [UInt8] {
+        let profile: UInt8 = 2 // AAC Main (0), AAC LC (1), AAC SSR (2), AAC LTP (3)
+        let samplingFreqIndex: UInt8 = 0x08 // 16,000 Hz (Table 기준)
+        let channelConfig: UInt8 = 0x01 // Mono (1채널)
+        
+        let fullLength = aacFrameSize + 7 // ADTS + packet 전체 프레임 크기
+        
         var adtsHeader = [UInt8](repeating: 0, count: 7)
+        
         adtsHeader[0] = 0xFF
         adtsHeader[1] = 0xF1
-        adtsHeader[2] = (profile << 6) | (samplingFreqIndex << 2) | (0 << 1) | 0
+        adtsHeader[2] = ((profile - 1) << 6) | (samplingFreqIndex << 2) | (channelConfig >> 2)
         adtsHeader[3] = ((channelConfig & 3) << 6) | UInt8(fullLength >> 11)
         adtsHeader[4] = UInt8((fullLength & 0x7FF) >> 3)
         adtsHeader[5] = ((UInt8(fullLength & 7) << 5) | 0x1F)
         adtsHeader[6] = 0xFC
-//        adtsHeader[2] = ((profile - 1) << 6) | (samplingFreqIndex << 2) | (channelConfig >> 2)
-//        adtsHeader[3] = ((channelConfig & 3) << 6) | UInt8(fullLength >> 11)
-//        adtsHeader[4] = UInt8((fullLength & 0x7FF) >> 3)
-//        adtsHeader[5] = ((UInt8(fullLength & 7) << 5) | 0x1F)
-//        adtsHeader[6] = 0xFC
         
         print("adtsHeader created: \(adtsHeader)")
         print("ADTS Header: \(adtsHeader.map { String(format: "0x%02X", $0) }.joined(separator: " "))")
@@ -1558,23 +1502,6 @@ extension RTSPClient {
     
     func getPayloadType(from rtpPacket: [UInt8]) -> Int {
         return Int(rtpPacket[1] & 0x7F) // 2번째 바이트에서 7비트 추출함
-    }
-    
-    // 딥시크의 대답
-    func createADTSHeader(frameLength: Int) -> Data {
-        // ADTS 헤더 생성 (예: 7바이트)
-        var adtsHeader = Data(count: 7)
-        
-        // ADTS 헤더 설정 (예: 프레임 길이, 샘플 레이트, 채널 수 등)
-        adtsHeader[0] = 0xFF
-        adtsHeader[1] = 0xF1
-        adtsHeader[2] = 0x50
-        adtsHeader[3] = 0x80
-        adtsHeader[4] = UInt8((frameLength + 7) >> 3)
-        adtsHeader[5] = UInt8(((frameLength + 7) & 0x07) << 5)
-        adtsHeader[6] = 0xFC
-        
-        return adtsHeader
     }
     
     func parseAdtsHeader(from data: Data) {
