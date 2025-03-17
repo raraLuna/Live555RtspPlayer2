@@ -560,6 +560,9 @@ extension RTSPClient {
         print("......Audio RTP Parsing......")
         guard let audioTrack = sdpInfo.audioTrack else { return }
         
+        let config = audioTrack.config
+        let mode = audioTrack.mode
+        
         //print("rtpPacket: \(rtpPacket)")
         //print("rtpPacket.count: \(rtpPacket.count)")
         //print("Data(rtpPacket): \(Data(rtpPacket))")
@@ -573,22 +576,72 @@ extension RTSPClient {
             print("rtpPacket start with FF")
             payload = Array(rtpPacket.dropFirst(2))
         } else {
+            print("rtpPacket start without FF")
             payload = Array(rtpPacket.dropFirst(1))
         }
         
-        let newPayload = processAacRtpPacket(payload)
+        //let newPayload = processAacRtpPacket(payload)
         //print("paylaod with adts: \(newPayload)")
         //print("newPayload: \(newPayload.map { String(format: "0x%02X", $0) }.joined(separator: " "))")
         
-        self.audioDumpData.append(contentsOf: newPayload)
-        print("self.audioDumpData.count: \(self.audioDumpData.count)")
+        //self.audioDumpData.append(contentsOf: newPayload)
+        //print("self.audioDumpData.count: \(self.audioDumpData.count)")
         
-        let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("rtp_dump.aac").path()
-        MakeDumpFile.dumpRTPPacket(self.audioDumpData, to: dumpFilePath)
+        //let decoder = AACDecoder()
+        //decoder.processRtpPacket(Data(rtpPacket))
+        
+        let decoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: true)
+        
+        let sourceData: [UInt8] = payload
+        let sourceBufferSize = UInt32(sourceData.count)
+        
+        let sourceBuffer = UnsafeMutableRawPointer.allocate(byteCount: Int(sourceBufferSize), alignment: 4)
+        sourceBuffer.copyMemory(from: sourceData, byteCount: Int(sourceBufferSize))
+        
+        decoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
+            print("오디오 디코딩 완료!")
+
+            //사용 후 메모리 해제
+            sourceBuffer.deallocate()
+        }
+    
+        
+        
+        
+//        let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("rtp_dump.aac").path()
+//        MakeDumpFile.dumpRTPPacket(self.audioDumpData, to: dumpFilePath)
         
         //        let decoder = AACLATMDecoder()
         //        let pcmData = decoder?.decodeAAC(Data(self.audioDumpData))
         //        print("pcmData : \(pcmData) bytes")
+        
+        
+//        
+//        var sourceFormat = AudioStreamBasicDescription()
+//        sourceFormat.mSampleRate = 16000
+//        sourceFormat.mFormatID = kAudioFormatMPEG4AAC
+//        sourceFormat.mFormatFlags = 0
+//        sourceFormat.mFramesPerPacket = 1024
+//        sourceFormat.mChannelsPerFrame = 1
+//        sourceFormat.mBitsPerChannel = 0
+//        sourceFormat.mBytesPerPacket = 0
+//        sourceFormat.mBytesPerFrame = 0
+//
+//        let audioDecoder = AudioDecoder(sourceFormat: sourceFormat, destFormatID: kAudioFormatLinearPCM, sampleRate: 16000, useHardwareDecode: false)
+//
+//        let sourceData: [UInt8] = self.audioDumpData
+//        let sourceBufferSize = UInt32(sourceData.count)
+//
+//        // 메모리 직접 할당
+//        let sourceBuffer = UnsafeMutableRawPointer.allocate(byteCount: Int(sourceBufferSize), alignment: 4)
+//        sourceBuffer.copyMemory(from: sourceData, byteCount: Int(sourceBufferSize))
+//
+//        audioDecoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
+//            print("오디오 디코딩 완료!")
+//
+//            // 사용 후 메모리 해제
+//            sourceBuffer.deallocate()
+//        }
         
     }
     
@@ -1223,7 +1276,7 @@ extension RTSPClient {
         let rtpHeader = parseHeaderData(header: header, packetSize: packetSize)
         return rtpHeader
         //        }
-        //        
+        //
         //        // 만약 헤더가 존재하지 않으면 Keep-Alive 응답일 가능성 있음 -> 새 RTP 헤더 탐색
         //        if searchForNextRtpHeader(in: &header) {
         //            let newPacketSize = getPacketSize(header: header)
@@ -1356,7 +1409,7 @@ extension RTSPClient {
         print("adtsHeader created: \(adtsHeader)")
         print("ADTS Header: \(adtsHeader.map { String(format: "0x%02X", $0) }.joined(separator: " "))")
         
-        parseAdtsHeader(from: Data(adtsHeader))
+        //parseAdtsHeader(from: Data(adtsHeader))
         return adtsHeader
         
         func getPayloadType(from rtpPacket: [UInt8]) -> Int {

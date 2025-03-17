@@ -21,10 +21,10 @@ class AudioDecoder {
     private var sourceFormat: AudioStreamBasicDescription
     private var destinationFormat: AudioStreamBasicDescription
     
-    init(sourceFormat: AudioStreamBasicDescription, destFormatID: AudioFormatID, sampleRate: Float64, useHardwareDecode: Bool) {
-        self.sourceFormat = sourceFormat
+    init(formatID: AudioFormatID, useHardwareDecode: Bool) {
+        self.sourceFormat = AudioStreamBasicDescription()
         self.destinationFormat = AudioStreamBasicDescription()
-        self.audioConverter = configureDecoder(sourceFormatDesc: sourceFormat, destFormat: &self.destinationFormat, destFormatID: destFormatID, sampleRate: sampleRate, useHardwareDecode: useHardwareDecode)
+        self.audioConverter = configureDecoder(sourceFormat: &self.sourceFormat, destFormat: &self.destinationFormat, formatID: formatID, useHardwareDecode: useHardwareDecode)
     }
     
     deinit {
@@ -44,14 +44,22 @@ class AudioDecoder {
     }
     
     // MARK: Private Functions
-    private func configureDecoder(sourceFormatDesc: AudioStreamBasicDescription, destFormat: inout AudioStreamBasicDescription, destFormatID: AudioFormatID, sampleRate: Float64, useHardwareDecode: Bool) -> AudioConverterRef? {
-        if destFormatID != kAudioFormatLinearPCM {
-            print("Unsupported format after decoding")
-            return nil
-        }
-        var sourceFormat = sourceFormatDesc
-        print("configureDecoder sourceFormat: \(sourceFormat)")
-        destFormat.mSampleRate = sampleRate
+    private func configureDecoder(sourceFormat: inout AudioStreamBasicDescription, destFormat: inout AudioStreamBasicDescription, formatID: AudioFormatID, useHardwareDecode: Bool) -> AudioConverterRef? {
+//        if formatID != kAudioFormatLinearPCM {
+//            print("Unsupported format after decoding")
+//            return nil
+//        }
+        sourceFormat.mSampleRate = 16000
+        sourceFormat.mFormatID = kAudioFormatMPEG4AAC
+        sourceFormat.mFormatFlags = 0
+        sourceFormat.mFramesPerPacket = 1024
+        sourceFormat.mChannelsPerFrame = 1
+        sourceFormat.mBitsPerChannel = 0
+        sourceFormat.mBytesPerPacket = 0
+        sourceFormat.mBytesPerFrame = 0
+        printAudioStreamBasicDescription(sourceFormat)
+        
+        destFormat.mSampleRate = 16000
         destFormat.mFormatID = kAudioFormatLinearPCM
         destFormat.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked
         destFormat.mFramesPerPacket = 1
@@ -59,11 +67,10 @@ class AudioDecoder {
         destFormat.mChannelsPerFrame = sourceFormat.mChannelsPerFrame
         destFormat.mBytesPerFrame = destFormat.mBitsPerChannel / 8 * destFormat.mChannelsPerFrame
         destFormat.mBytesPerPacket = destFormat.mBytesPerFrame * destFormat.mFramesPerPacket
-        
-        printAudioStreamBasicDescription(sourceFormat)
+
         printAudioStreamBasicDescription(destFormat)
         
-        guard let audioClassDesc = getAudioClassDescription(type: destFormatID, manufacturer: kAppleSoftwareAudioCodecManufacturer) else {
+        guard let audioClassDesc = getAudioClassDescription(type: formatID, manufacturer: kAppleSoftwareAudioCodecManufacturer) else {
             print("configureDecoder audioClassDesc failed")
             return nil
         }
