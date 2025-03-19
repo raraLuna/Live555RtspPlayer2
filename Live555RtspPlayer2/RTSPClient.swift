@@ -129,7 +129,9 @@ class RTSPClient {
     
     private var isRunning = false
     
+    //let ringBuffer = PCMRingBuffer(maxSize: 16000 * 2 * 5)
     let h264Decoder = H264Decoder()
+    private var pcmData = Data()
     
     init(serverAddress: String, serverPort: UInt16 = 554, serverPath: String, url: String) {
         self.serverAddress = serverAddress
@@ -558,25 +560,35 @@ extension RTSPClient {
     
     func parseAudio(rtpHeader: RtpHeader, rtpPacket: [UInt8], sdpInfo: SdpInfo) {
         print("......Audio RTP Parsing......")
-        guard let audioTrack = sdpInfo.audioTrack else { return }
+        guard sdpInfo.audioTrack != nil else { return }
         
-        let config = audioTrack.config
-        let mode = audioTrack.mode
+        //let config = audioTrack.config
+        //let mode = audioTrack.mode
         
         //print("rtpPacket: \(rtpPacket)")
         //print("rtpPacket.count: \(rtpPacket.count)")
         //print("Data(rtpPacket): \(Data(rtpPacket))")
         
-        var payload = [UInt8]()
+        let hexString = rtpPacket.map { String(format: "0x%02X", $0) }.joined(separator: " ")
+        print("rtpPacket in Hex: \n\(hexString)")
         
+        var payload = [UInt8]()
         // rtpPacket이 FF로 시작하면 2bytes를 제거하고
         // 그렇지 않으면 1byte를 제거한 뒤 adts header를 만들어 붙임
-        payload = rtpPacket
+        //payload = rtpPacket
         if rtpPacket.starts(with: [255]) {
-            print("rtpPacket start with FF")
-            payload = Array(rtpPacket.dropFirst(2))
+            if rtpPacket.starts(with: [255, 255, 255]) {
+                print("rtpPacket start with FF, FF, FF. remove 4byte")
+                payload = Array(rtpPacket.dropFirst(4))
+            } else if rtpPacket.starts(with: [255, 255]) {
+                print("rtpPacket start with FF, FF. remove 3byte")
+                payload = Array(rtpPacket.dropFirst(3))
+            } else {
+                print("rtpPacket start with FF. remove 2byte")
+                payload = Array(rtpPacket.dropFirst(2))
+            }
         } else {
-            print("rtpPacket start without FF")
+            print("rtpPacket start without FF. remove 1byte")
             payload = Array(rtpPacket.dropFirst(1))
         }
         
@@ -590,20 +602,108 @@ extension RTSPClient {
         //let decoder = AACDecoder()
         //decoder.processRtpPacket(Data(rtpPacket))
         
-        let decoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: true)
+        let decoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
         
         let sourceData: [UInt8] = payload
         let sourceBufferSize = UInt32(sourceData.count)
         
+        guard sourceBufferSize > 0 else { return }
+        
+        //let sourceBuffer = UnsafeMutableRawPointer.allocate(byteCount: Int(sourceBufferSize), alignment: 4)
+        //sourceBuffer.copyMemory(from: sourceData, byteCount: Int(sourceBufferSize))
+        
         let sourceBuffer = UnsafeMutableRawPointer.allocate(byteCount: Int(sourceBufferSize), alignment: 4)
-        sourceBuffer.copyMemory(from: sourceData, byteCount: Int(sourceBufferSize))
+        sourceData.withUnsafeBytes { rawBuffer in
+            sourceBuffer.copyMemory(from: rawBuffer.baseAddress!, byteCount: Int(sourceBufferSize))
+        }
+        
+        // `sourceBuffer`의 내용을 16진수 문자열로 변환하여 출력
+        let bufferPointer = sourceBuffer.bindMemory(to: UInt8.self, capacity: Int(sourceBufferSize))
+        let sourceBufferHexString = (0..<Int(sourceBufferSize)).map { String(format: "0x%02X", bufferPointer[$0]) }.joined(separator: " ")
+
+        print("sourceBuffer: \n\(sourceBufferHexString)")
         
         decoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
             print("오디오 디코딩 완료!")
+            
+            let dateFormatter = DateFormatter()
+            dateFormatter.locale = Locale(identifier: "ko_KR")
+            dateFormatter.timeZone = TimeZone(secondsFromGMT: 9 * 3600)
+            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSSS"
+            let timeStr = dateFormatter.string(from: Date())
+            
+            print("time: \(timeStr)")
+            
+            let audioBuffer = audioBufferList.mBuffers
+            let data = Data(bytes: audioBuffer.mData!, count: Int(audioBuffer.mDataByteSize))
+            
+            print("디코딩 된 pcm 크기: \(data.count)")
+            //print("UInt8로 보는 pcm Data:\n\([UInt8](data))")
+            //let pcmHexString = data.map { String(format: "0x%02X", $0) }.joined(separator: " ")
+            //print("pcmData in Hex: \n\(pcmHexString)")
+            
+            self.pcmData.append(data)
+            print("pcmData total: \(self.pcmData.count)")
+            
+            
+            //let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("pcm_dump.pcm").path()
+            let dumpFilePath = "/Users/yumi/Documents/pcm_dump.pcm"
+            
+            let fileURL = URL(fileURLWithPath: dumpFilePath)
+            if !FileManager.default.fileExists(atPath: fileURL.path) {
+                FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
+            }
+//            else {
+//                do {
+//                    try FileManager.default.removeItem(at: fileURL)
+//                } catch {
+//                    print("failed remove existing file")
+//                }
+//            }
+            guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
+                print("Failed to open file for writing")
+                return
+            }
+            //fileHandle.seekToEndOfFile()
+            fileHandle.write(self.pcmData)
+            fileHandle.closeFile()
 
-            //사용 후 메모리 해제
+            print("Dump saved at \(dumpFilePath)")
+                
             sourceBuffer.deallocate()
+            
         }
+            
+            
+            
+
+//            //let duration: TimeInterval = 2.0
+//            let audioBuffer = audioBufferList.mBuffers
+//            let sampleRate: Double = 16000.0
+//            let pcmPlayer = PCMPlayer()
+//            
+//            let data = Data(bytes: audioBuffer.mData!, count: Int(audioBuffer.mDataByteSize))
+//
+//            //let ringBuffer = PCMRingBuffer(maxSize: 16000 * 2 * 5) // 16KHz, 16bit pcm 5초)
+//            self.ringBuffer.append(data)
+//            
+//            //let requiredByteSize = Int(sampleRate * duration) * MemoryLayout<Float32>.size
+//            //print("requiredByteSize: \(requiredByteSize)")
+//            
+//            // 2초 분량 가져오기
+//            if let chunk = self.ringBuffer.readChunk(size: 16000 * 2) {
+//                print("읽은 PCM 데이터 크기: \(chunk.count) bytes")
+//                pcmPlayer.playBufferedPCMData(pcmData: data)
+//            } else {
+//                print("버퍼에 충분한 데이터가 없음 ")
+//            }
+//            
+//            //ringBuffer.clear()
+//            
+//            //사용 후 메모리 해제
+//            sourceBuffer.deallocate()
+//            print("sourceBuffer.deallocate()")
+//        }
     
         
         

@@ -10,7 +10,7 @@ import CoreVideo
 
 class MakeDumpFile {
     static func dumpRTPPacket(_ packet: [UInt8], to filePath: String) {
-        print("Start writing RTP dump file")
+        print("Start writing dump file")
 
         let fileURL = URL(fileURLWithPath: filePath)
         
@@ -38,7 +38,7 @@ class MakeDumpFile {
         fileHandle.write(data)
         fileHandle.closeFile()
 
-        print("RTP Dump saved at \(filePath)")
+        print("Dump saved at \(filePath)")
     }
     
     static func dumpCVPixelBuffer(_ pixelBuffer: CVPixelBuffer, to filePath: String) {
