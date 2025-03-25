@@ -2,6 +2,7 @@
 <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="23504" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="BYZ-38-t0r">
     <device id="retina6_12" orientation="portrait" appearance="light"/>
     <dependencies>
+        <deployment identifier="iOS"/>
         <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="23506"/>
         <capability name="Safe area layout guides" minToolsVersion="9.0"/>
         <capability name="System colors in document resources" minToolsVersion="11.0"/>
@@ -40,6 +41,14 @@
                                     <action selector="login:" destination="BYZ-38-t0r" eventType="touchUpInside" id="rDQ-Kv-oIH"/>
                                 </connections>
                             </button>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="pog-Uk-MJS">
+                                <rect key="frame" x="144.66666666666666" y="454" width="104" height="35"/>
+                                <state key="normal" title="Button"/>
+                                <buttonConfiguration key="configuration" style="plain" title="Play Audio"/>
+                                <connections>
+                                    <action selector="playAudio:" destination="BYZ-38-t0r" eventType="touchUpInside" id="Xii-AE-dhW"/>
+                                </connections>
+                            </button>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
                         <color key="backgroundColor" systemColor="systemBackgroundColor"/>
@@ -47,13 +56,16 @@
                             <constraint firstItem="gca-Mh-nYm" firstAttribute="top" secondItem="eXW-78-quL" secondAttribute="bottom" constant="58" id="7DZ-BJ-GRm"/>
                             <constraint firstItem="JI3-Ca-OfQ" firstAttribute="top" secondItem="gca-Mh-nYm" secondAttribute="bottom" constant="66" id="9qq-4h-RtW"/>
                             <constraint firstItem="gca-Mh-nYm" firstAttribute="top" secondItem="6Tk-OE-BBY" secondAttribute="top" constant="205" id="B6g-x8-aQX"/>
+                            <constraint firstItem="pog-Uk-MJS" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="CgL-dZ-u1F"/>
                             <constraint firstItem="gca-Mh-nYm" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="Kra-M1-0R8"/>
                             <constraint firstItem="JI3-Ca-OfQ" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="TcZ-yy-FuS"/>
                             <constraint firstItem="eXW-78-quL" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="qNo-qA-hDa"/>
+                            <constraint firstItem="pog-Uk-MJS" firstAttribute="top" secondItem="JI3-Ca-OfQ" secondAttribute="bottom" constant="54" id="wBM-qC-Zcw"/>
                         </constraints>
                     </view>
                     <connections>
                         <outlet property="loginBtn" destination="eXW-78-quL" id="Um1-rg-AJl"/>
+                        <outlet property="playAudioBtn" destination="pog-Uk-MJS" id="dMI-i8-JPB"/>
                         <outlet property="startRtspBtn" destination="8bC-Xf-vdC" id="As4-iJ-brF"/>
                         <outlet property="stopRtspBtn" destination="JI3-Ca-OfQ" id="ebK-Li-QIq"/>
                     </connections>

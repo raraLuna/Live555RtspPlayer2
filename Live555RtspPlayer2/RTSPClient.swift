@@ -130,8 +130,12 @@ class RTSPClient {
     private var isRunning = false
     private let decoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
     //let ringBuffer = PCMRingBuffer(maxSize: 16000 * 2 * 5)
-    let h264Decoder = H264Decoder()
-    private var pcmData: [UInt8] = []
+    private let h264Decoder = H264Decoder()
+    private let pcmPlayer = PCMPlayer()
+    private let audioPlayer = AudioPlayer()
+    
+    //private var pcmData: [UInt8] = []
+    private var pcmData: [[UInt8]] = []
     private let audioDecodeQueue = DispatchQueue(label: "com.odc.audioDecodeQueue", attributes: .concurrent)
     init(serverAddress: String, serverPort: UInt16 = 554, serverPath: String, url: String) {
         self.serverAddress = serverAddress
@@ -595,6 +599,7 @@ extension RTSPClient {
         
         
         // MARK: AAC dump file 만들기
+        /*
         let newPayload = processAacRtpPacket(payload)
         //print("paylaod with adts: \(newPayload)")
         //print("newPayload: \(newPayload.map { String(format: "0x%02X", $0) }.joined(separator: " "))")
@@ -604,74 +609,32 @@ extension RTSPClient {
         
         //let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("adts_rtp_dump.aac").path()
         let dumpFilePath = "/Users/yumi/Documents/audioDump/adts_rtp_dump.aac"
-        MakeDumpFile.dumpRTPPacket(self.audioDumpData, to: dumpFilePath)
-//        let fileURL = URL(fileURLWithPath: dumpFilePath)
-//        if !FileManager.default.fileExists(atPath: fileURL.path) {
-//            FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
-//        }
-////            else {
-////                do {
-////                    try FileManager.default.removeItem(at: fileURL)
-////                } catch {
-////                    print("failed remove existing file")
-////                }
-////            }
-//        guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
-//            print("Failed to open file for writing")
-//            return
-//        }
-//        //fileHandle.seekToEndOfFile()
-//        //fileHandle.write(Data(self.audioDumpData))
-//        fileHandle.write(Data(newPayload))
-//        fileHandle.closeFile()
-//
-//        print("Dump saved at \(dumpFilePath)")
-        
-        
-        
-        
-        // MARK: AAC -> PCM decoding
-        /*
-        let aacDecoder = AACDecoder(sampleRate: 16000, channels: 1)
-
-        let aacData = Data(payload)
-        let aacDataCopy = aacData // 복사본을 생성하여 접근 충돌 방지
-
-        aacDataCopy.withUnsafeBytes { rawPointer in
-            guard let mutableRawPointer = UnsafeMutableRawPointer(mutating: rawPointer.baseAddress) else {
-                print("fail to make mutableRawPointer")
-                    return }
-            
-            guard let pcmdata = aacDecoder.decode(aacData: mutableRawPointer, length: aacDataCopy.count) else {
-                print("fail to decode aac")
-                return
-            }
-            
-            self.pcmData2.append(pcmdata)
-            
-            print("pcmData total: \(self.pcmData2.count)")
-            
-            let dumpFilePath = "/Users/yumi/Documents/pcm_dump2.pcm"
-            
-            let fileURL = URL(fileURLWithPath: dumpFilePath)
-            if !FileManager.default.fileExists(atPath: fileURL.path) {
-                FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
-            }
-            guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
-                print("Failed to open file for writing")
-                return
-            }
-            //fileHandle.seekToEndOfFile()
-            fileHandle.write(self.pcmData2)
-            fileHandle.closeFile()
-
-            print("Dump saved at \(dumpFilePath)")
+        //MakeDumpFile.dumpRTPPacket(self.audioDumpData, to: dumpFilePath)
+        let fileURL = URL(fileURLWithPath: dumpFilePath)
+        if !FileManager.default.fileExists(atPath: fileURL.path) {
+            FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
         }
-         */
+        //            else {
+        //                do {
+        //                    try FileManager.default.removeItem(at: fileURL)
+        //                } catch {
+        //                    print("failed remove existing file")
+        //                }
+        //            }
+        guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
+            print("Failed to open file for writing")
+            return
+        }
+        //fileHandle.seekToEndOfFile()
+        //fileHandle.write(Data(self.audioDumpData))
+        fileHandle.write(Data(self.audioDumpData))
+        fileHandle.closeFile()
         
+        print("Dump saved at \(dumpFilePath)")
         
-        //MARK: 잘 안되는 코드 (이유 정확히 알 수 없음)
         //let decoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
+        */
+         
         
         let sourceData: [UInt8] = payload
         let sourceBufferSize = UInt32(sourceData.count)
@@ -682,9 +645,9 @@ extension RTSPClient {
         //sourceBuffer.copyMemory(from: sourceData, byteCount: Int(sourceBufferSize))
         
         let sourceBuffer = UnsafeMutableRawPointer.allocate(byteCount: Int(sourceBufferSize), alignment: 4)
-//        sourceData.withUnsafeBytes { rawBuffer in
-//            sourceBuffer.copyMemory(from: rawBuffer.baseAddress!, byteCount: Int(sourceBufferSize))
-//        }
+        //        sourceData.withUnsafeBytes { rawBuffer in
+        //            sourceBuffer.copyMemory(from: rawBuffer.baseAddress!, byteCount: Int(sourceBufferSize))
+        //        }
         sourceData.withUnsafeBytes { rawBuffer in
             if let baseAddress = rawBuffer.baseAddress {
                 sourceBuffer.copyMemory(from: baseAddress, byteCount: Int(sourceBufferSize))
@@ -693,73 +656,77 @@ extension RTSPClient {
         
         // `sourceBuffer`의 내용을 16진수 문자열로 변환하여 출력
         let bufferPointer = sourceBuffer.bindMemory(to: UInt8.self, capacity: Int(sourceBufferSize))
-        let sourceBufferHexString = (0..<Int(sourceBufferSize)).map { String(format: "0x%02X", bufferPointer[$0]) }.joined(separator: " ")
-
+        //let sourceBufferHexString = (0..<Int(sourceBufferSize)).map { String(format: "0x%02X", bufferPointer[$0]) }.joined(separator: " ")
+        
         //print("sourceBuffer: \n\(sourceBufferHexString)")
         
-            decoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
-                print("오디오 디코딩 완료!")
-                
-                //            let dateFormatter = DateFormatter()
-                //            dateFormatter.locale = Locale(identifier: "ko_KR")
-                //            dateFormatter.timeZone = TimeZone(secondsFromGMT: 9 * 3600)
-                //            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSSS"
-                //            let timeStr = dateFormatter.string(from: Date())
-                //
-                //            print("time: \(timeStr)")
-                
-                
-                
-                
-                
-                //var audioBuffer = AudioBuffer()
-                let audioBuffer = audioBufferList.mBuffers
-                //var data = Data()
-                let data = Data(bytes: audioBuffer.mData!, count: Int(audioBuffer.mDataByteSize))
-                
-                
-                
-                
-                print("디코딩 된 pcm 크기: \(data.count)")
-                //print("UInt8로 보는 pcm Data:\n\([UInt8](data))")
-                let pcmHexString = data.map { String(format: "0x%02X", $0) }.joined(separator: " ")
-                //print("pcmData in Hex: \n\(pcmHexString)")
-                
-                self.pcmData.append(contentsOf: [UInt8](data))
-                print("pcmData total: \(self.pcmData.count)")
-                
-                let pcmDataHexString = self.pcmData.map { String(format: "0x%02X", $0) }.joined(separator: " ")
-                //print("pcmData in Hex: \n\(pcmDataHexString)")
-                
-                //let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("pcm_dump.pcm").path()
-                let dumpFilePath = "/Users/yumi/Documents/audioDump/pcm_dump.pcm"
-                MakeDumpFile.dumpRTPPacket(self.pcmData, to: dumpFilePath)
-                //            let fileURL = URL(fileURLWithPath: dumpFilePath)
-                //            if !FileManager.default.fileExists(atPath: fileURL.path) {
-                //                FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
-                //            }
-                ////            else {
-                ////                do {
-                ////                    try FileManager.default.removeItem(at: fileURL)
-                ////                } catch {
-                ////                    print("failed remove existing file")
-                ////                }
-                ////            }
-                //            guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
-                //                print("Failed to open file for writing")
-                //                return
-                //            }
-                //           // fileHandle.seekToEndOfFile()
-                //            //fileHandle.write(Data(self.pcmData))
-                //            fileHandle.write(data)
-                //            fileHandle.closeFile()
-                //
-                //            print("Dump saved at \(dumpFilePath)")
-                
-                sourceBuffer.deallocate()
-                print("sourceBuffer.deallocate()")
+        decoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
+            print("오디오 디코딩 완료!")
             
+            //            let dateFormatter = DateFormatter()
+            //            dateFormatter.locale = Locale(identifier: "ko_KR")
+            //            dateFormatter.timeZone = TimeZone(secondsFromGMT: 9 * 3600)
+            //            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSSS"
+            //            let timeStr = dateFormatter.string(from: Date())
+            //
+            //            print("time: \(timeStr)")
+            
+            //var audioBuffer = AudioBuffer()
+            let audioBuffer = audioBufferList.mBuffers
+            //var data = Data()
+            let data = Data(bytes: audioBuffer.mData!, count: Int(audioBuffer.mDataByteSize))
+            
+            print("디코딩 된 pcm 크기: \(data.count)")
+            //print("UInt8로 보는 pcm Data:\n\([UInt8](data))")
+            //let pcmHexString = data.map { String(format: "0x%02X", $0) }.joined(separator: " ")
+            //print("pcmData in Hex: \n\(pcmHexString)")
+            
+            //self.pcmData.append(contentsOf: [UInt8](data))
+            self.pcmData.append([UInt8](data))
+            print("pcmData total: \(self.pcmData.count)")
+            
+            //let pcmDataHexString = self.pcmData.map { String(format: "0x%02X", $0) }.joined(separator: " ")
+            //print("pcmData in Hex: \n\(pcmDataHexString)")
+            
+            /*
+            //let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("pcm_dump.pcm").path()
+            let dumpFilePath = "/Users/yumi/Documents/audioDump/pcm_dump.pcm"
+            //MakeDumpFile.dumpRTPPacket(self.pcmData, to: dumpFilePath)
+            let fileURL = URL(fileURLWithPath: dumpFilePath)
+            if !FileManager.default.fileExists(atPath: fileURL.path) {
+                FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
+            }
+            //            else {
+            //                do {
+            //                    try FileManager.default.removeItem(at: fileURL)
+            //                } catch {
+            //                    print("failed remove existing file")
+            //                }
+            //            }
+            guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
+                print("Failed to open file for writing")
+                return
+            }
+            
+            // fileHandle.seekToEndOfFile()
+            fileHandle.write(Data(self.pcmData))
+            //fileHandle.write(data)
+            fileHandle.closeFile()
+            
+            print("Dump saved at \(dumpFilePath)")
+            */
+            
+            sourceBuffer.deallocate()
+            print("sourceBuffer.deallocate()")
+    
         }
+    }
+    
+    func playPcmData() {
+        print("playPcmData self.pcmData count: \(self.pcmData.count)")
+        self.pcmPlayer.playPCMData(self.pcmData)
+        //self.audioPlayer.playPCMData(Data(self.pcmData))
+    }
             
         
         
@@ -830,8 +797,7 @@ extension RTSPClient {
 //            // 사용 후 메모리 해제
 //            sourceBuffer.deallocate()
 //        }
-        
-    }
+
     
     
     

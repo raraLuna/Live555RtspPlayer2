@@ -11,6 +11,7 @@ class ViewController: UIViewController {
     @IBOutlet weak var loginBtn: UIButton!
     @IBOutlet var startRtspBtn: UIView!
     @IBOutlet weak var stopRtspBtn: UIButton!
+    @IBOutlet weak var playAudioBtn: UIButton!
     
     let wasUrl = WasApiInfo.URL_WAS_USA_DEV
     let userId = "remotestapp@gmail.com"
@@ -245,6 +246,15 @@ class ViewController: UIViewController {
 //                return
 //            }
 //            rtspClient.closeConnection()
+        }
+    }
+    
+    @IBAction func playAudio(_ sender: Any) {
+        DispatchQueue.global(qos: .background).async {
+            guard let rtspClient = self.rtspClient, self.isRunning else {
+                return
+            }
+            rtspClient.playPcmData()
         }
     }
     
