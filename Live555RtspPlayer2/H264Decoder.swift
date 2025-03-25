@@ -48,9 +48,9 @@ class H264Decoder {
         }
         let pixelBuffer = imageBuffer as CVPixelBuffer
         print("디코딩 완료 - CVPixelBuffer 얻음 \(pixelBuffer)")
-        let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("decoded_frame.yuv").path()
-        MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
-        print("PixelBuffer 덤프 저장 경로: \(dumpFilePath)")
+        //let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("decoded_frame.yuv").path()
+        //MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
+        //print("PixelBuffer 덤프 저장 경로: \(dumpFilePath)")
          
         if let refCon = decompressionOutputRefCon {
             let decoder = Unmanaged<H264Decoder>.fromOpaque(refCon).takeUnretainedValue()
