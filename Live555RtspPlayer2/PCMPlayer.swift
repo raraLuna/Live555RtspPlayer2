@@ -23,7 +23,7 @@ class PCMPlayer {
             print("[PCMPlayer] Failed to create inputFormat")
             return
         }
-        print("[PCMPlayer] Successed to create inputFormat: \(inputFormat)")
+        //print("[PCMPlayer] Successed to create inputFormat: \(inputFormat)")
         
         //outputFormat
         guard let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000.0, channels: 1, interleaved: false) else {
@@ -32,7 +32,7 @@ class PCMPlayer {
         }
      
         self.audioEngine.connect(self.playerNode, to: self.audioEngine.outputNode, format: outputFormat)
-        print("[PCMPlayer] Audio Player Node connected to AudioEngine with format")
+        //print("[PCMPlayer] Audio Player Node connected to AudioEngine with format")
         
         do {
             try self.audioEngine.start()
@@ -45,8 +45,8 @@ class PCMPlayer {
                     print("[PCMPlayer] Failed to create input AVAudioPCMBuffer")
                     return
                 }
-                print("[PCMPlayer] frameCapacity AVAudioFrameCount(byteArray.count) : \(AVAudioFrameCount(byteArray.count))")
-                print("[PCMPlayer] inputFormat.streamDescription.pointee.mBytesPerFrame: \(inputFormat.streamDescription.pointee.mBytesPerFrame)")
+                //print("[PCMPlayer] frameCapacity AVAudioFrameCount(byteArray.count) : \(AVAudioFrameCount(byteArray.count))")
+                //print("[PCMPlayer] inputFormat.streamDescription.pointee.mBytesPerFrame: \(inputFormat.streamDescription.pointee.mBytesPerFrame)")
                 
                 let frameCount = UInt32(byteArray.count) / 2
                 inputBuffer.frameLength = frameCount
@@ -61,9 +61,9 @@ class PCMPlayer {
                     print("[PCMPlayer] Failed to create output AVAudioPCMBuffer")
                     return
                 }
-                print("[PCMPlayer] success to create output PCM Buffer")
-                print("[PCMPlayer] output PCM Buffer.format: \(outputBuffer.format)")
-                print("[PCMPlayer] outputBuffer.frameCapacity: \(outputBuffer.frameCapacity)")
+                //print("[PCMPlayer] success to create output PCM Buffer")
+                //print("[PCMPlayer] output PCM Buffer.format: \(outputBuffer.format)")
+                //print("[PCMPlayer] outputBuffer.frameCapacity: \(outputBuffer.frameCapacity)")
                 
                 outputBuffer.frameLength = outputBuffer.frameCapacity
                 

@@ -22,7 +22,7 @@ class AudioDecoder {
     private var destinationFormat: AudioStreamBasicDescription
     
     init(formatID: AudioFormatID, useHardwareDecode: Bool) {
-        print("init Decoder")
+        //print("init Decoder")
         self.sourceFormat = AudioStreamBasicDescription()
         self.destinationFormat = AudioStreamBasicDescription()
         self.audioConverter = configureDecoder(sourceFormat: &self.sourceFormat, destFormat: &self.destinationFormat, formatID: formatID, useHardwareDecode: useHardwareDecode)
@@ -38,7 +38,7 @@ class AudioDecoder {
     }
     
     func freeDecoder() {
-        print("freeDecoder")
+        //print("freeDecoder")
         if let converter = audioConverter {
             AudioConverterDispose(converter)
             audioConverter = nil
@@ -86,7 +86,7 @@ class AudioDecoder {
         sourceFormat.mBytesPerPacket = 0 // 패킷당 바이트 수
         sourceFormat.mBytesPerFrame = 0 // 프레임당 바이트 수
         sourceFormat.mReserved = 0 // 예약된 값 (항상 0)
-        printAudioStreamBasicDescription(sourceFormat)
+        //printAudioStreamBasicDescription(sourceFormat)
         
         destFormat.mSampleRate = Float64(16000.0)
         destFormat.mFormatID = kAudioFormatLinearPCM
@@ -98,8 +98,8 @@ class AudioDecoder {
         destFormat.mBytesPerPacket = 2
         //destFormat.mBytesPerFrame = destFormat.mBitsPerChannel / 8 * destFormat.mChannelsPerFrame
         //destFormat.mBytesPerPacket = destFormat.mBytesPerFrame * destFormat.mFramesPerPacket
-        print("destFormat.mFormatFlags: \(destFormat.mFormatFlags)")
-        printAudioStreamBasicDescription(destFormat)
+        //print("destFormat.mFormatFlags: \(destFormat.mFormatFlags)")
+        //printAudioStreamBasicDescription(destFormat)
         
         guard let audioClassDesc = getAudioClassDescription(type: formatID, manufacturer: kAppleSoftwareAudioCodecManufacturer) else {
             print("configureDecoder audioClassDesc failed")
@@ -115,18 +115,18 @@ class AudioDecoder {
             return nil
         }
         
-        print("Audio converter created successfully")
+        //print("Audio converter created successfully")
         return audioConverter
     }
     
     private func decodeFormat(converter: AudioConverterRef?, sourceBuffer: UnsafeMutableRawPointer, sourceBufferSize: UInt32, sourceFormat: AudioStreamBasicDescription, destFormat: AudioStreamBasicDescription, completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
-        print("decodeFormat() called")
+        //print("decodeFormat() called")
         guard let converter = converter else { print("converter is nil"); return }
         
         let ioOutputDataPackets: UInt32 = 1024 // 변환 예정인 패킷 수(AAC는 1024 고정)
         // 패킷 개수 x 채널 수 x 바이트 크기 (PCM의 경우 한 프레임 당 mBytesPerFrame만큼의 데이터를 가짐
         let outputBufferSize = ioOutputDataPackets * destFormat.mChannelsPerFrame * destFormat.mBytesPerFrame
-        print("outputBufferSize: \(outputBufferSize)")
+        //print("outputBufferSize: \(outputBufferSize)")
         
         var fillBufferList = AudioBufferList()
         fillBufferList.mNumberBuffers = 1
@@ -147,7 +147,7 @@ class AudioDecoder {
                                      sourceBuffer: sourceBuffer,
                                      packetDesc: packetDescPointer
         )
-        print("userInfo: \(userInfo)")
+        //print("userInfo: \(userInfo)")
         
         // `outputPacketDesc` 메모리 할당
         // PCM 변환에서는 패킷 설명이 필요 없으므로 nil로 설정 가능
@@ -155,7 +155,7 @@ class AudioDecoder {
         outputPacketDescPointer.initialize(to: AudioStreamPacketDescription())
 
         var numPackets = ioOutputDataPackets
-        print("numPackets: \(numPackets)")
+        //print("numPackets: \(numPackets)")
 
         // `AudioConverterFillComplexBuffer` 호출
         let status = AudioConverterFillComplexBuffer(
@@ -180,20 +180,20 @@ class AudioDecoder {
 
         // 메모리 해제
         packetDescPointer.deallocate()
-        print("packetDescPointer.deallocate()")
+        //print("packetDescPointer.deallocate()")
         outputPacketDescPointer.deallocate()
-        print("outputPacketDescPointer.deallocate()")
+        //print("outputPacketDescPointer.deallocate()")
         fillBufferList.mBuffers.mData?.deallocate()
-        print("fillBufferList.mBuffers.mData?.deallocate()")
+        //print("fillBufferList.mBuffers.mData?.deallocate()")
     }
     
     func verifyDecodedAudio(bufferList: AudioBufferList, expectedFormat: AudioStreamBasicDescription) {
         let buffer = bufferList.mBuffers
         
-        print("✅ Decoded Audio Verification")
-        print(" - Number of Buffers: \(bufferList.mNumberBuffers)")
-        print(" - Data Byte Size: \(buffer.mDataByteSize)")
-        print(" - Number of Channels: \(buffer.mNumberChannels)")
+        //print("✅ Decoded Audio Verification")
+        //print(" - Number of Buffers: \(bufferList.mNumberBuffers)")
+        //print(" - Data Byte Size: \(buffer.mDataByteSize)")
+        //print(" - Number of Channels: \(buffer.mNumberChannels)")
         
         if bufferList.mNumberBuffers != 1 {
             print("⚠️ Warning: Unexpected number of buffers!")
@@ -213,7 +213,7 @@ class AudioDecoder {
     
     // MARK: Audio Converter Input Data Callback
     private let decodeConverterComplexInputDataProc: AudioConverterComplexInputDataProc = { _, ioNumberDataPackets, ioData, outDataPacketDescription, inUserData in
-        print("decodeConverterComplexInputDataProc")
+        //print("decodeConverterComplexInputDataProc")
         guard let inUserData = inUserData else {
             return -1
         }
@@ -225,7 +225,7 @@ class AudioDecoder {
             return -1
         }
         
-        print("info.sourceDataSize: \(info.sourceDataSize), \ninfo.sourceChannelsPerFrame: \(info.sourceChannelsPerFrame), \ninfo.sourceBuffer: \(String(describing: info.sourceBuffer)), \ninfo.packetDesc: \(String(describing: info.packetDesc))")
+        //print("info.sourceDataSize: \(info.sourceDataSize), \ninfo.sourceChannelsPerFrame: \(info.sourceChannelsPerFrame), \ninfo.sourceBuffer: \(String(describing: info.sourceBuffer)), \ninfo.packetDesc: \(String(describing: info.packetDesc))")
         
         // outDataPacketDescription 타입: UnsafeMutablePointer<UnsafeMutablePointer<AudioStreamPacketDescription>?>
         // packetDesc 타입: UnsafeMutablePointer<AudioStreamPacketDescription>?
@@ -250,8 +250,8 @@ class AudioDecoder {
     
     // MARK: Utility Functions
     private func getAudioClassDescription(type: AudioFormatID, manufacturer: UInt32) -> UnsafePointer<AudioClassDescription>? {
-        print("getAudioClassDescription() called")
-        print("getAudioClassDescription type:\(type), manufacturer: \(manufacturer)")
+        //print("getAudioClassDescription() called")
+        //print("getAudioClassDescription type:\(type), manufacturer: \(manufacturer)")
         var propertyDataSize: UInt32 = 0
         var decoderSpecific = type
         
@@ -261,7 +261,7 @@ class AudioDecoder {
                                   (formatID >> 16) & 0xFF,
                                   (formatID >> 8) & 0xFF,
                                   formatID & 0xFF)
-        print("AudioFormatID: \(formatString)")
+        //print("AudioFormatID: \(formatString)")
 
         let manufacturerID = (manufacturer)
         let manufacturerString = String(format: "%c%c%c%c",
@@ -269,7 +269,7 @@ class AudioDecoder {
                                         (manufacturerID >> 16) & 0xFF,
                                         (manufacturerID >> 8) & 0xFF,
                                         manufacturerID & 0xFF)
-        print("Manufacturer: \(manufacturerString)")
+        //print("Manufacturer: \(manufacturerString)")
 
         
 //        func AudioFormatGetPropertyInfo(
@@ -285,7 +285,7 @@ class AudioDecoder {
             print("Failed to get audio decoder info. status: \(status), size: \(propertyDataSize)")
             return nil
         }
-        print("propertyDataSize: \(propertyDataSize)")
+        //print("propertyDataSize: \(propertyDataSize)")
         
         let count = Int(propertyDataSize) / MemoryLayout<AudioClassDescription>.size
         var descriptions = [AudioClassDescription](repeating: AudioClassDescription(), count: count)

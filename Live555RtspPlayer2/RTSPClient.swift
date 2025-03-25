@@ -128,15 +128,16 @@ class RTSPClient {
     private var estimatedFPS: UInt32 = 0
     
     private var isRunning = false
-    private let decoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
-    //let ringBuffer = PCMRingBuffer(maxSize: 16000 * 2 * 5)
+    private let audioDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
     private let h264Decoder = H264Decoder()
     private let pcmPlayer = PCMPlayer()
     private let audioPlayer = AudioPlayer()
+    private let convertYUVToRGB = YUVNV12toRGB()
     
     //private var pcmData: [UInt8] = []
     private var pcmData: [[UInt8]] = []
     private let audioDecodeQueue = DispatchQueue(label: "com.odc.audioDecodeQueue", attributes: .concurrent)
+    
     init(serverAddress: String, serverPort: UInt16 = 554, serverPath: String, url: String) {
         self.serverAddress = serverAddress
         self.serverPort = serverPort
@@ -369,8 +370,7 @@ extension RTSPClient {
                     print("spdInfo.videoTrack.payloadType: \(String(describing: sdpInfo.videoTrack?.payloadType))")
                     print("spdInfo.audioTrack.payloadType: \(String(describing: sdpInfo.audioTrack?.payloadType))")
                     if rtpHeader.payloadType == sdpInfo.videoTrack?.payloadType {
-                        print("video packet arrived")
-                        //self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
+                        self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                     } else if rtpHeader.payloadType == sdpInfo.audioTrack?.payloadType {
                         self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                     }
@@ -379,7 +379,7 @@ extension RTSPClient {
                     self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                 } else if payloadType == 96 || payloadType == 97 {
                     print("Video RTP Packet detected")
-                    //self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
+                    self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
                 } else {
                     print("Unknown RTP Packet detected")
                 }
@@ -515,7 +515,7 @@ extension RTSPClient {
                         h264Decoder.decode(nalData: Data(nalUnit))
                     }
                     
-                    
+                    h264Decoder.delegate = convertYUVToRGB
                     
                     //                    switch type {
                     //                    case VideoCodecUtils.NAL_SPS: // 7
@@ -548,6 +548,7 @@ extension RTSPClient {
         }
     }
     
+
     func convertUInt8ToUInt16(_ data: [UInt8]) -> [UInt16] {
         var result: [UInt16] = []
         
@@ -574,7 +575,7 @@ extension RTSPClient {
         //print("Data(rtpPacket): \(Data(rtpPacket))")
         
         let hexString = rtpPacket.map { String(format: "0x%02X", $0) }.joined(separator: " ")
-        print("rtpPacket in Hex: \n\(hexString)")
+        //print("rtpPacket in Hex: \n\(hexString)")
         
         var payload = [UInt8]()
         // rtpPacket이 FF로 시작하면 2bytes를 제거하고
@@ -582,17 +583,17 @@ extension RTSPClient {
         //payload = rtpPacket
         if rtpPacket.starts(with: [255]) {
             if rtpPacket.starts(with: [255, 255, 255]) {
-                print("rtpPacket start with FF, FF, FF. remove 4byte")
+                //print("rtpPacket start with FF, FF, FF. remove 4byte")
                 payload = Array(rtpPacket.dropFirst(4))
             } else if rtpPacket.starts(with: [255, 255]) {
-                print("rtpPacket start with FF, FF. remove 3byte")
+                //print("rtpPacket start with FF, FF. remove 3byte")
                 payload = Array(rtpPacket.dropFirst(3))
             } else {
-                print("rtpPacket start with FF. remove 2byte")
+                //print("rtpPacket start with FF. remove 2byte")
                 payload = Array(rtpPacket.dropFirst(2))
             }
         } else {
-            print("rtpPacket start without FF. remove 1byte")
+            //print("rtpPacket start without FF. remove 1byte")
             payload = Array(rtpPacket.dropFirst(1))
         }
         
@@ -660,7 +661,7 @@ extension RTSPClient {
         
         //print("sourceBuffer: \n\(sourceBufferHexString)")
         
-        decoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
+        audioDecoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
             print("오디오 디코딩 완료!")
             
             //            let dateFormatter = DateFormatter()
@@ -676,14 +677,14 @@ extension RTSPClient {
             //var data = Data()
             let data = Data(bytes: audioBuffer.mData!, count: Int(audioBuffer.mDataByteSize))
             
-            print("디코딩 된 pcm 크기: \(data.count)")
+            //print("디코딩 된 pcm 크기: \(data.count)")
             //print("UInt8로 보는 pcm Data:\n\([UInt8](data))")
             //let pcmHexString = data.map { String(format: "0x%02X", $0) }.joined(separator: " ")
             //print("pcmData in Hex: \n\(pcmHexString)")
             
             //self.pcmData.append(contentsOf: [UInt8](data))
             self.pcmData.append([UInt8](data))
-            print("pcmData total: \(self.pcmData.count)")
+            //print("pcmData total: \(self.pcmData.count)")
             
             //let pcmDataHexString = self.pcmData.map { String(format: "0x%02X", $0) }.joined(separator: " ")
             //print("pcmData in Hex: \n\(pcmDataHexString)")
@@ -723,7 +724,7 @@ extension RTSPClient {
     }
     
     func playPcmData() {
-        print("playPcmData self.pcmData count: \(self.pcmData.count)")
+        //print("playPcmData self.pcmData count: \(self.pcmData.count)")
         self.pcmPlayer.playPCMData(self.pcmData)
         //self.audioPlayer.playPCMData(Data(self.pcmData))
     }

@@ -9,6 +9,10 @@ import Foundation
 import AVFoundation
 import VideoToolbox
 
+protocol H264DecoderDelegate: AnyObject {
+    func didDecodeFrame(_ pixelBuffer: CVPixelBuffer)
+}
+
 class H264Decoder {
     private var decompressionSession: VTDecompressionSession?
     private var formatDescription: CMFormatDescription?
@@ -16,6 +20,8 @@ class H264Decoder {
     private var pps: Data?
     private var frameIndex = 0
     private var lastPTS = CMTime(value: 0, timescale: 30000)
+    
+    weak var delegate: H264DecoderDelegate?
     
     private let decompressionOutputCallback: VTDecompressionOutputCallback = { (
         decompressionOutputRefCon,
@@ -45,6 +51,11 @@ class H264Decoder {
         let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("decoded_frame.yuv").path()
         MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
         print("PixelBuffer 덤프 저장 경로: \(dumpFilePath)")
+         
+        if let refCon = decompressionOutputRefCon {
+            let decoder = Unmanaged<H264Decoder>.fromOpaque(refCon).takeUnretainedValue()
+            decoder.delegate?.didDecodeFrame(pixelBuffer)
+        }
     }
     
     // H.264 NAL Unit 처리 함수
