@@ -138,7 +138,7 @@ class RTSPClient {
     private var estimatedFPS: UInt32 = 0
     
     private var isRunning = false
-    private let audioDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
+    //private let audioDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
     //private let h264Decoder = H264Decoder()
     private let pcmPlayer = PCMPlayer()
     private let audioPlayer = AudioPlayer()
@@ -665,6 +665,9 @@ extension RTSPClient {
         payloadData = Data(payload)
         self.audioQueue.enqueue(payloadData)
         
+        
+        
+        /*
         let sourceBufferSize = UInt32(sourceData.count)
         
         guard sourceBufferSize > 0 else { return }
@@ -736,8 +739,9 @@ extension RTSPClient {
                 return
             }
             
-            // fileHandle.seekToEndOfFile()
-            fileHandle.write(Data(self.pcmData))
+             let flatArray = self.pcmData.flatMap { $0 }
+             //fileHandle.seekToEndOfFile()
+             fileHandle.write(Data(flatArray))
             //fileHandle.write(data)
             fileHandle.closeFile()
             
@@ -746,17 +750,21 @@ extension RTSPClient {
             
             sourceBuffer.deallocate()
             print("sourceBuffer.deallocate()")
+            
+            
+            
+            */
             self.semaphore.signal()
             print("startReceivingData Semaphore signal")
     
-        }
+        
     }
     
-    func playPcmData() {
-        //print("playPcmData self.pcmData count: \(self.pcmData.count)")
-        self.pcmPlayer.playPCMData(self.pcmData)
-        //self.audioPlayer.playPCMData(Data(self.pcmData))
-    }
+//    func playPcmData() {
+//        print("playPcmData self.pcmData count: \(self.pcmData.count)")
+//        self.pcmPlayer.playPCMData(self.pcmData)
+//        self.audioPlayer.playPCMData(Data(self.pcmData))
+//    }
             
         
         

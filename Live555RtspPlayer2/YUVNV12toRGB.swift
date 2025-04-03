@@ -12,6 +12,7 @@ import Accelerate
 import CoreGraphics
 
 class YUVNV12toRGB: H264DecoderDelegate {
+    weak var viewController: ViewController?
     
     // MARK: vImage 사용하지 않은 변환
     ///GPU 가속 없이 CPU에서 직접 변환 수행, CoreVideo 필요
@@ -79,8 +80,10 @@ class YUVNV12toRGB: H264DecoderDelegate {
         // RGBA 데이터를 Bitmap Image로 변환
         let bmpImage = self.createBitmap(rgbaBuffer, width: width, height: height)
         print("bitmap header 생성 및 bitmap 변환 완료")
-        let cgImageFilePath = "/Users/yumi/Documents/videoDump/bitmapImage.bmp"
-        try? bmpImage.write(to: URL(fileURLWithPath: cgImageFilePath))
+        guard let uiImage = UIImage(data: bmpImage) else { return }
+        viewController?.updataImageView(with: uiImage)
+        //let cgImageFilePath = "/Users/yumi/Documents/videoDump/bitmapImage.bmp"
+        //try? bmpImage.write(to: URL(fileURLWithPath: cgImageFilePath))
     }
     
     // YUV(NV12) → RGB 변환

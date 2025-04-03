@@ -6,12 +6,13 @@
 //
 
 import UIKit
+import CoreMedia
 
 class ViewController: UIViewController {
     @IBOutlet weak var loginBtn: UIButton!
     @IBOutlet var startRtspBtn: UIView!
     @IBOutlet weak var stopRtspBtn: UIButton!
-    @IBOutlet weak var playAudioBtn: UIButton!
+    @IBOutlet weak var imageView: UIImageView!
     
     let wasUrl = WasApiInfo.URL_WAS_USA_DEV
     let userId = "remotestapp@gmail.com"
@@ -33,6 +34,7 @@ class ViewController: UIViewController {
     
     private var rtspClient: RTSPClient?
     private var isRunning = false
+    private var pcmData: [[UInt8]] = []
     
     let backgroundQueue = DispatchQueue(label: "com.olivendove.backgroundQueue", qos: .background)
     
@@ -248,15 +250,15 @@ class ViewController: UIViewController {
 //            rtspClient.closeConnection()
         }
     }
-    
-    @IBAction func playAudio(_ sender: Any) {
-        DispatchQueue.global(qos: .background).async {
-            guard let rtspClient = self.rtspClient, self.isRunning else {
-                return
-            }
-            rtspClient.playPcmData()
-        }
-    }
+//    
+//    @IBAction func playAudio(_ sender: Any) {
+//        DispatchQueue.global(qos: .background).async {
+//            guard let rtspClient = self.rtspClient, self.isRunning else {
+//                return
+//            }
+//            rtspClient.playPcmData()
+//        }
+//    }
     
     private func startRTSP() {
         DispatchQueue.global(qos: .background).async {
@@ -366,8 +368,58 @@ class ViewController: UIViewController {
 
             let h264Decoder = H264Decoder(videoQueue: rtspClient.getVideoQueue())
             let convertYUVToRGB = YUVNV12toRGB()
-            h264Decoder.decode()
             h264Decoder.delegate = convertYUVToRGB
+            h264Decoder.decode()
+            
+            convertYUVToRGB.viewController = self
+            
+            let pcmPlayer = PCMPlayer()
+            let aacDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false, audioQueue: rtspClient.getAudioQueue())
+            aacDecoder.decodeAudio { audioBufferList, numPackets, packetDesc in
+                print("오디오 디코딩 완료!")
+                let audioBuffer = audioBufferList.mBuffers
+                let data = Data(bytes: audioBuffer.mData!, count: Int(audioBuffer.mDataByteSize))
+                
+                //pcmPlayer.playPCMData([UInt8](data))
+                self.pcmData.append([UInt8](data))
+                
+                if self.pcmData.count >= 50 {
+                    pcmPlayer.playPCMData(Array(self.pcmData[0..<50]))
+                    self.pcmData = Array(self.pcmData[50..<self.pcmData.count])
+                }
+                
+                
+//                let dumpFilePath = "/Users/yumi/Documents/audioDump/pcm_dump.pcm"
+//                //MakeDumpFile.dumpRTPPacket(self.pcmData, to: dumpFilePath)
+//                let fileURL = URL(fileURLWithPath: dumpFilePath)
+//                if !FileManager.default.fileExists(atPath: fileURL.path) {
+//                    FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
+//                }
+//                //            else {
+//                //                do {
+//                //                    try FileManager.default.removeItem(at: fileURL)
+//                //                } catch {
+//                //                    print("failed remove existing file")
+//                //                }
+//                //            }
+//                guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
+//                    print("Failed to open file for writing")
+//                    return
+//                }
+//                let flatArray = self.pcmData.flatMap { $0 }
+//                //fileHandle.seekToEndOfFile()
+//                fileHandle.write(Data(flatArray))
+//                //fileHandle.write(data)
+//                fileHandle.closeFile()
+//                
+//                print("Dump saved at \(dumpFilePath)")
+            }
+        }
+    }
+    
+    func updataImageView(with image: UIImage) {
+        DispatchQueue.main.async {
+            self.imageView.image = image
         }
     }
 }

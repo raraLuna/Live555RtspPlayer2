@@ -24,7 +24,7 @@ class H264Decoder {
     private let videoQueue: ThreadSafeQueue<Data>
     private let videoSemaphore = DispatchSemaphore(value: 1)
     
-    weak var delegate: H264DecoderDelegate?
+    var delegate: H264DecoderDelegate?
     
     private let decompressionOutputCallback: VTDecompressionOutputCallback = { (
         decompressionOutputRefCon,
@@ -54,13 +54,14 @@ class H264Decoder {
             return
         }
         let pixelBuffer = imageBuffer as CVPixelBuffer
-        print("디코딩 완료 - CVPixelBuffer 얻음 \(pixelBuffer)")
+        print("비디오 디코딩 완료 - CVPixelBuffer 얻음 \(pixelBuffer)")
         //let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("decoded_frame.yuv").path()
         //MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
         //print("PixelBuffer 덤프 저장 경로: \(dumpFilePath)")
          
         if let refCon = decompressionOutputRefCon {
             let decoder = Unmanaged<H264Decoder>.fromOpaque(refCon).takeUnretainedValue()
+            print("decoder.delegate: \(String(describing: decoder.delegate))")
             decoder.delegate?.didDecodeFrame(pixelBuffer)
         }
     }

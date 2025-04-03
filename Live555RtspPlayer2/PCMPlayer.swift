@@ -12,6 +12,7 @@ class PCMPlayer {
     private lazy var audioEngine = AVAudioEngine()
     private var playerNode = AVAudioPlayerNode()
     
+    //func playPCMData(_ byteArrays: [[UInt8]]) {
     func playPCMData(_ byteArrays: [[UInt8]]) {
         self.audioEngine = AVAudioEngine()
         self.playerNode = AVAudioPlayerNode()
