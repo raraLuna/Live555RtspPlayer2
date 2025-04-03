@@ -77,10 +77,10 @@ class YUVNV12toRGB: H264DecoderDelegate {
 //        }
         
         // RGBA 데이터를 Bitmap Image로 변환
-//        let bmpImage = self.createBitmap(rgbaBuffer, width: width, height: height)
-//        print("bitmap header 생성 및 bitmap 변환 완료")
-//        let cgImageFilePath = "/Users/yumi/Documents/videoDump/bitmapImage.bmp"
-//        try? bmpImage.write(to: URL(fileURLWithPath: cgImageFilePath))
+        let bmpImage = self.createBitmap(rgbaBuffer, width: width, height: height)
+        print("bitmap header 생성 및 bitmap 변환 완료")
+        let cgImageFilePath = "/Users/yumi/Documents/videoDump/bitmapImage.bmp"
+        try? bmpImage.write(to: URL(fileURLWithPath: cgImageFilePath))
     }
     
     // YUV(NV12) → RGB 변환

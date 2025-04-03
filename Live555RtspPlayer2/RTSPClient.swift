@@ -68,6 +68,11 @@ struct RtpHeader {
     var payloadSize: Int = 0
 }
 
+struct videoDecodingInfo {
+    static var sps: Data = Data()
+    static var pps: Data = Data()
+}
+
 class Track {
     var request: String = ""
     var payloadType: Int = -1
@@ -112,6 +117,11 @@ class RTSPClient {
     private let dataQueue = DispatchQueue(label: "com.odc.dataQueue", attributes: .concurrent) // 동시성 제어용 Queue
     private let parsingDataQueue = DispatchQueue(label: "com.odc.parsingDataQueue", attributes: .concurrent)
     private let dataAvailable = DispatchSemaphore(value: 0) // 데이터 사용 신호
+    
+    private let videoQueue = ThreadSafeQueue<Data>()
+    private let audioQueue = ThreadSafeQueue<Data>()
+    private let semaphore = DispatchSemaphore(value: 1)
+    
     private var sps: [UInt8] = []
     private var pps: [UInt8] = []
     private var audioDumpData: [UInt8] = []
@@ -129,7 +139,7 @@ class RTSPClient {
     
     private var isRunning = false
     private let audioDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
-    private let h264Decoder = H264Decoder()
+    //private let h264Decoder = H264Decoder()
     private let pcmPlayer = PCMPlayer()
     private let audioPlayer = AudioPlayer()
     private let convertYUVToRGB = YUVNV12toRGB()
@@ -317,122 +327,115 @@ extension RTSPClient {
     }
     
     func startReceivingData(sdpInfo: SdpInfo) {
-        self.isRunning = true
-        while self.isRunning {
-            // 1byte 만큼 데이터 읽기
-            var oneByteBuffer = [UInt8](repeating: 0, count: 1)
-            var threeByteBuffer = [UInt8](repeating: 0, count: 3)
-            var saveBuffer: [UInt8] = []
-            var bytesRead = Darwin.recv(self.socket, &oneByteBuffer, 1, 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.isRunning = true
             
-            guard bytesRead > 0 else {
-                print("Connection closed or error occurred")
-                break
-            }
-            
-            print("\nread 1byte: \(oneByteBuffer)")
-            
-            if oneByteBuffer[0] == 0x24 { // $ 도착
-                print("----$ START----")
-                bytesRead = Darwin.recv(self.socket, &threeByteBuffer, 3, 0)
-                let channel = threeByteBuffer[0]
-                let lengthBytes = Array(threeByteBuffer[1..<3])
-                let lengthInt = Int(lengthBytes[0]) << 8 | Int(lengthBytes[1])
-                print("channel: \(channel)")
-                print("read rtp length byte: \(lengthBytes)")
-                print("length: \(lengthInt) bytes")
-                print(threeByteBuffer[0] == 0 ? "RTP Packet" : "RTCP Packet")
+            while self.isRunning {
+                self.semaphore.wait()
+                print("startReceivingData Semaphore wait")
+                // 1byte 만큼 데이터 읽기
+                var oneByteBuffer = [UInt8](repeating: 0, count: 1)
+                var threeByteBuffer = [UInt8](repeating: 0, count: 3)
+                var saveBuffer: [UInt8] = []
+                var bytesRead = Darwin.recv(self.socket, &oneByteBuffer, 1, 0)
                 
-                var rtpBuffer = [UInt8](repeating: 0, count: lengthInt)
-                bytesRead = readData(socket: self.socket, buffer: &rtpBuffer, offset: 0, length: lengthInt)
-                if bytesRead > 0 {
-                    print("Received Data: \(bytesRead) bytes")
-                } else {
-                    print("Failed to read data")
+                guard bytesRead > 0 else {
+                    print("Connection closed or error occurred")
+                    break
                 }
                 
-                //print("RTP buffer : \(rtpBuffer)")
-                guard !rtpBuffer.isEmpty else {
-                    print("RTP buffer is empty")
-                    return
-                }
+                print("\nread 1byte: \(oneByteBuffer)")
                 
-                //print("packetSize: \(lengthInt), rtpData:\n\(rtpBuffer)")
-                let rtpHeader = self.readHeader(from: rtpBuffer, packetSize: lengthInt)
-                let rtpPacket = Array(rtpBuffer[12...])
-                
-                
-                let payloadType = rtpHeader.payloadType
-                //print("payloadType: \(payloadType)")
-                if payloadType >= 96 && payloadType <= 127 {
-                    print("This is Dynamic payload type. Need SDP Information")
-                    //print("Sdp video payload: \(self.sdpVideoPT), Sdp audio payload: \(self.sdpAudioPT)")
-                    print("spdInfo.videoTrack.payloadType: \(String(describing: sdpInfo.videoTrack?.payloadType))")
-                    print("spdInfo.audioTrack.payloadType: \(String(describing: sdpInfo.audioTrack?.payloadType))")
-                    if rtpHeader.payloadType == sdpInfo.videoTrack?.payloadType {
-                        self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
-                    } else if rtpHeader.payloadType == sdpInfo.audioTrack?.payloadType {
-                        self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
-                    }
-                } else if payloadType == 0 || payloadType == 8  {
-                    print("Audio RTP Packet detected")
-                    self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
-                } else if payloadType == 96 || payloadType == 97 {
-                    print("Video RTP Packet detected")
-                    self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
-                } else {
-                    print("Unknown RTP Packet detected")
-                }
-                
-                
-                //let h264Frame = processH264RtpPacket(rtpBuffer)
-                //print("Decoded H.264 frame: \(h264Frame.count) bytes")
-                //                if self.encodeType == "h264" {
-                //                    let rtpH264Parser = RtpH264Parser()
-                //                    if rtpPacket.count != 0 {
-                //                        let nalUnit = rtpH264Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
-                //                        if nalUnit.count != 0 {
-                //                            print("rtpH264Parser result nalUnit: \(nalUnit)")
-                //                        }
-                //                    }
-                //                } else if self.encodeType == "h265" {
-                //                    let rtpH265Parser = RtpH265Parser()
-                //                    if rtpPacket.count != 0 {
-                //                        let nalUnit = rtpH265Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
-                //                        if nalUnit.count != 0 {
-                //                            print("rtpH265Parser result nalUnit: \(nalUnit)")
-                //                        }
-                //                    }
-                //                }
-                
-                //                let decoder = H264Decoder()
-                //                if h264Frame.count != 0 {
-                //                    decoder.decode(nalData: Data(h264Frame))
-                //                } else {
-                //                    let aacFrame = processAacRtpPacket(rtpBuffer)
-                //                    print("Decoded AAC frame: \(aacFrame.count) bytes")
-                //                }
-                
-                
-            } else {
-                if oneByteBuffer[0] == 0x52 { //"R" 도착
-                    saveBuffer.append(oneByteBuffer[0])
+                if oneByteBuffer[0] == 0x24 { // $ 도착
+                    print("----$ START----")
                     bytesRead = Darwin.recv(self.socket, &threeByteBuffer, 3, 0)
-                    print("read next bytes: \(threeByteBuffer)")
-                    if threeByteBuffer[0..<3] == [84, 83, 80]{
-                        print("----RTSP response ----")
-                        for i in 0..<threeByteBuffer.count {
-                            saveBuffer.append(threeByteBuffer[i])
-                        }
-                        repeat {
-                            bytesRead = Darwin.recv(self.socket, &oneByteBuffer, 1, 0)
-                            saveBuffer.append(oneByteBuffer[0])
-                        } while !saveBuffer.contains([13, 10, 13, 10])
-                        print("\(String(describing: String(bytes: Array(saveBuffer), encoding: .utf8)))")
+                    let channel = threeByteBuffer[0]
+                    let lengthBytes = Array(threeByteBuffer[1..<3])
+                    let lengthInt = Int(lengthBytes[0]) << 8 | Int(lengthBytes[1])
+                    print("channel: \(channel)")
+                    print("read rtp length byte: \(lengthBytes)")
+                    print("length: \(lengthInt) bytes")
+                    print(threeByteBuffer[0] == 0 ? "RTP Packet" : "RTCP Packet")
+                    
+                    var rtpBuffer = [UInt8](repeating: 0, count: lengthInt)
+                    bytesRead = self.readData(socket: self.socket, buffer: &rtpBuffer, offset: 0, length: lengthInt)
+                    if bytesRead > 0 {
+                        print("Received Data: \(bytesRead) bytes")
+                    } else {
+                        print("Failed to read data")
+                        self.semaphore.signal()
+                        print("startReceivingData Semaphore signal")
                     }
+                    
+                    //print("RTP buffer : \(rtpBuffer)")
+                    guard !rtpBuffer.isEmpty else {
+                        print("RTP buffer is empty")
+                        self.semaphore.signal()
+                        print("startReceivingData Semaphore signal")
+                        return
+                    }
+                    
+                    //print("packetSize: \(lengthInt), rtpData:\n\(rtpBuffer)")
+                    let rtpHeader = self.readHeader(from: rtpBuffer, packetSize: lengthInt)
+                    let rtpPacket = Array(rtpBuffer[12...])
+                    
+                    //print("rtpPacket: \(rtpPacket)")
+                    
+                    let payloadType = rtpHeader.payloadType
+                    //print("payloadType: \(payloadType)")
+                    if payloadType >= 96 && payloadType <= 127 {
+                        print("This is Dynamic payload type. Need SDP Information")
+                        //print("Sdp video payload: \(self.sdpVideoPT), Sdp audio payload: \(self.sdpAudioPT)")
+                        print("spdInfo.videoTrack.payloadType: \(String(describing: sdpInfo.videoTrack?.payloadType))")
+                        print("spdInfo.audioTrack.payloadType: \(String(describing: sdpInfo.audioTrack?.payloadType))")
+                        if rtpHeader.payloadType == sdpInfo.videoTrack?.payloadType {
+                            self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
+                        } else if rtpHeader.payloadType == sdpInfo.audioTrack?.payloadType {
+                            self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
+                        }
+                    } else if payloadType == 0 || payloadType == 8  {
+                        print("Audio RTP Packet detected")
+                        self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
+                        self.semaphore.signal()
+                        print("startReceivingData Semaphore signal")
+                    } else if payloadType == 96 || payloadType == 97 {
+                        print("Video RTP Packet detected")
+                        self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
+                        self.semaphore.signal()
+                        print("startReceivingData Semaphore signal")
+                    } else {
+                        print("Unknown RTP Packet detected")
+                        self.semaphore.signal()
+                        print("startReceivingData Semaphore signal")
+                    }
+                    
+                    
+                } else {
+                    if oneByteBuffer[0] == 0x52 { //"R" 도착
+                        saveBuffer.append(oneByteBuffer[0])
+                        bytesRead = Darwin.recv(self.socket, &threeByteBuffer, 3, 0)
+                        print("read next bytes: \(threeByteBuffer)")
+                        if threeByteBuffer[0..<3] == [84, 83, 80]{
+                            print("----RTSP response ----")
+                            for i in 0..<threeByteBuffer.count {
+                                saveBuffer.append(threeByteBuffer[i])
+                            }
+                            repeat {
+                                bytesRead = Darwin.recv(self.socket, &oneByteBuffer, 1, 0)
+                                saveBuffer.append(oneByteBuffer[0])
+                            } while !saveBuffer.contains([13, 10, 13, 10])
+                            print("\(String(describing: String(bytes: Array(saveBuffer), encoding: .utf8)))")
+                           
+                        }
+                    }
+                    self.semaphore.signal()
+                    print("startReceivingData Semaphore signal")
+                    continue
                 }
-                continue
             }
+//            self.videoSemaphore.signal()
+//            self.audioSemaphore.signal()
+//            print("startReceivingData Semaphore signal")
         }
     }
     
@@ -459,7 +462,7 @@ extension RTSPClient {
                 var prefixSize = 0
                 
                 if nalUnit.count != 0 {
-                    print("rtpH264Parser result nalUnit: \(nalUnit)")
+                    //print("rtpH264Parser result nalUnit: \(nalUnit)")
                     //var type = VideoCodecUtils.getNalUnitType(data: nalUnit, offset: 0, length: nalUnit.count, isH265: false)
                     //print("nalUnite Type: \(type)")
                     var prefixCount = 0
@@ -499,6 +502,7 @@ extension RTSPClient {
                             }
                         }
                     } else {
+                        print("here check sdp")
                         self.sps = [UInt8](sdpInfo.videoTrack?.sps ?? Data())
                         self.pps = [UInt8](sdpInfo.videoTrack?.pps ?? Data())
                     }
@@ -507,15 +511,30 @@ extension RTSPClient {
                     print("sps nalUnit: \(self.sps)")
                     print("pps nalUnit: \(self.pps)")
                     print("nalUnit count: \(nalUnit.count)")
-                    h264Decoder.decode(nalData: Data(self.sps))
-                    h264Decoder.decode(nalData: Data(self.pps))
-                    if nalDataIndex != 0 {
-                        h264Decoder.decode(nalData: Data(nalUnit[nalDataIndex - 4..<nalUnit.count]))
-                    } else {
-                        h264Decoder.decode(nalData: Data(nalUnit))
-                    }
+                    print("nalDataIndex: \(nalDataIndex)")
+                    //h264Decoder.decode(nalData: Data(self.sps))
+                    //h264Decoder.decode(nalData: Data(self.pps))
+                    videoDecodingInfo.sps = Data(self.sps.dropFirst(4))
+                    videoDecodingInfo.pps = Data(self.pps.dropFirst(4))
                     
-                    h264Decoder.delegate = convertYUVToRGB
+                    var unitData = Data()
+                    if nalDataIndex != 0 {
+                        unitData = Data(nalUnit[nalDataIndex - 4..<nalUnit.count])
+                        self.videoQueue.enqueue(unitData)
+                        print("videoQueue enqueue 1")
+                        self.semaphore.signal()
+                        print("startReceivingData Semaphore signal")
+                        //h264Decoder.decode(nalData: Data(nalUnit[nalDataIndex - 4..<nalUnit.count]))
+                    } else {
+                        unitData = Data(nalUnit)
+                        self.videoQueue.enqueue(unitData)
+                        print("videoQueue enqueue 2")
+                        self.semaphore.signal()
+                        print("startReceivingData Semaphore signal")
+                        //h264Decoder.decode(nalData: Data(nalUnit))
+                    }
+                    //h264Decoder.delegate = convertYUVToRGB
+                    
                     
                     //                    switch type {
                     //                    case VideoCodecUtils.NAL_SPS: // 7
@@ -534,6 +553,9 @@ extension RTSPClient {
                     //                        print("Video Nal Unit Type is \(type)")
                     //
                     //                    }
+                } else {
+                    self.semaphore.signal()
+                    print("startReceivingData Semaphore signal")
                 }
                 
             }
@@ -636,8 +658,13 @@ extension RTSPClient {
         //let decoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
         */
          
+        var payloadData = Data()
         
         let sourceData: [UInt8] = payload
+        
+        payloadData = Data(payload)
+        self.audioQueue.enqueue(payloadData)
+        
         let sourceBufferSize = UInt32(sourceData.count)
         
         guard sourceBufferSize > 0 else { return }
@@ -719,6 +746,8 @@ extension RTSPClient {
             
             sourceBuffer.deallocate()
             print("sourceBuffer.deallocate()")
+            self.semaphore.signal()
+            print("startReceivingData Semaphore signal")
     
         }
     }
@@ -798,7 +827,15 @@ extension RTSPClient {
 //            // 사용 후 메모리 해제
 //            sourceBuffer.deallocate()
 //        }
+    
+    
+    func getVideoQueue() -> ThreadSafeQueue<Data> {
+        return videoQueue
+    }
 
+    func getAudioQueue() -> ThreadSafeQueue<Data> {
+        return audioQueue
+    }
     
     
     

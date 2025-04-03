@@ -361,9 +361,13 @@ class ViewController: UIViewController {
             self.rtspSession = sessionVideo
             rtspClient.sendPlay(session: sessionVideo)
             
-            DispatchQueue.global(qos: .background).async {
-                rtspClient.startReceivingData(sdpInfo: sdpInfo)
-            }
+
+            rtspClient.startReceivingData(sdpInfo: sdpInfo)
+
+            let h264Decoder = H264Decoder(videoQueue: rtspClient.getVideoQueue())
+            let convertYUVToRGB = YUVNV12toRGB()
+            h264Decoder.decode()
+            h264Decoder.delegate = convertYUVToRGB
         }
     }
 }
