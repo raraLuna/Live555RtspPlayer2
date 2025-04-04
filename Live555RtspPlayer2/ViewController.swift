@@ -367,11 +367,15 @@ class ViewController: UIViewController {
             rtspClient.startReceivingData(sdpInfo: sdpInfo)
 
             let h264Decoder = H264Decoder(videoQueue: rtspClient.getVideoQueue())
-            let convertYUVToRGB = YUVNV12toRGB()
-            h264Decoder.delegate = convertYUVToRGB
-            h264Decoder.decode()
+            //let convertYUVToRGB = YUVNV12toRGB()
+            //h264Decoder.delegate = convertYUVToRGB
+            let metalRender = MetalRender()
+            h264Decoder.delegate = metalRender
             
-            convertYUVToRGB.viewController = self
+            
+            metalRender.viewController = self
+            metalRender.setupMetal()
+            h264Decoder.decode()
             
             let pcmPlayer = PCMPlayer()
             let aacDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false, audioQueue: rtspClient.getAudioQueue())
