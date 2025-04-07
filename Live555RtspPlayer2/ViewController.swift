@@ -36,6 +36,8 @@ class ViewController: UIViewController {
     private var isRunning = false
     private var pcmData: [[UInt8]] = []
     
+    var metalRender: MetalRender!
+    
     let backgroundQueue = DispatchQueue(label: "com.olivendove.backgroundQueue", qos: .background)
     
     override func viewDidLoad() {
@@ -63,6 +65,8 @@ class ViewController: UIViewController {
 //        self.url = "rtsp://\(urlHost):\(urlPort)\(urlPath)"
 //        //print("rtspConnect host: \(self.urlHost), port: \(self.urlPort), path: \(self.urlPath)")
 //        print("connect to url: \(self.url)")
+        
+        metalRender = MetalRender(view: self.imageView)
     }
     
     func processError(apiError: ApiError) {
@@ -369,12 +373,8 @@ class ViewController: UIViewController {
             let h264Decoder = H264Decoder(videoQueue: rtspClient.getVideoQueue())
             //let convertYUVToRGB = YUVNV12toRGB()
             //h264Decoder.delegate = convertYUVToRGB
-            let metalRender = MetalRender()
-            h264Decoder.delegate = metalRender
-            
-            
-            metalRender.viewController = self
-            metalRender.setupMetal()
+
+            h264Decoder.delegate = self.metalRender
             h264Decoder.decode()
             
             let pcmPlayer = PCMPlayer()
