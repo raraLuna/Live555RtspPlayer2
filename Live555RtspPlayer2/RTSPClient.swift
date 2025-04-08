@@ -141,7 +141,6 @@ class RTSPClient {
     //private let audioDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
     //private let h264Decoder = H264Decoder()
     //private let pcmPlayer = PCMPlayer()
-    private let audioPlayer = AudioPlayer()
     private let convertYUVToRGB = YUVNV12toRGB()
     
     //private var pcmData: [UInt8] = []
@@ -331,8 +330,6 @@ extension RTSPClient {
             self.isRunning = true
             
             while self.isRunning {
-                //self.semaphore.wait()
-                //print("startReceivingData Semaphore wait")
                 // 1byte 만큼 데이터 읽기
                 var oneByteBuffer = [UInt8](repeating: 0, count: 1)
                 var threeByteBuffer = [UInt8](repeating: 0, count: 3)
@@ -363,29 +360,19 @@ extension RTSPClient {
                         print("Received Data: \(bytesRead) bytes")
                     } else {
                         print("Failed to read data")
-                        //self.semaphore.signal()
-                        //print("startReceivingData Semaphore signal")
                     }
                     
-                    //print("RTP buffer : \(rtpBuffer)")
                     guard !rtpBuffer.isEmpty else {
                         print("RTP buffer is empty")
-                        //self.semaphore.signal()
-                        //print("startReceivingData Semaphore signal")
                         return
                     }
                     
-                    //print("packetSize: \(lengthInt), rtpData:\n\(rtpBuffer)")
                     let rtpHeader = self.readHeader(from: rtpBuffer, packetSize: lengthInt)
                     let rtpPacket = Array(rtpBuffer[12...])
                     
-                    //print("rtpPacket: \(rtpPacket)")
-                    
                     let payloadType = rtpHeader.payloadType
-                    //print("payloadType: \(payloadType)")
                     if payloadType >= 96 && payloadType <= 127 {
                         print("This is Dynamic payload type. Need SDP Information")
-                        //print("Sdp video payload: \(self.sdpVideoPT), Sdp audio payload: \(self.sdpAudioPT)")
                         print("spdInfo.videoTrack.payloadType: \(String(describing: sdpInfo.videoTrack?.payloadType))")
                         print("spdInfo.audioTrack.payloadType: \(String(describing: sdpInfo.audioTrack?.payloadType))")
                         if rtpHeader.payloadType == sdpInfo.videoTrack?.payloadType {
@@ -396,17 +383,11 @@ extension RTSPClient {
                     } else if payloadType == 0 || payloadType == 8  {
                         print("Audio RTP Packet detected")
                         self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
-                        //self.semaphore.signal()
-                        //print("startReceivingData Semaphore signal")
                     } else if payloadType == 96 || payloadType == 97 {
                         print("Video RTP Packet detected")
                         self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
-                        //self.semaphore.signal()
-                        //print("startReceivingData Semaphore signal")
                     } else {
                         print("Unknown RTP Packet detected")
-                        //self.semaphore.signal()
-                        //print("startReceivingData Semaphore signal")
                     }
                     
                     
@@ -428,28 +409,15 @@ extension RTSPClient {
                            
                         }
                     }
-                    //self.semaphore.signal()
-                    //print("startReceivingData Semaphore signal")
                     continue
                 }
             }
-//            self.videoSemaphore.signal()
-//            self.audioSemaphore.signal()
-//            print("startReceivingData Semaphore signal")
         }
     }
     
     func parseVideo(rtpHeader: RtpHeader, rtpPacket: [UInt8], sdpInfo: SdpInfo) {
         print("......Video RTP Parsing......")
         print("encodeType: \(self.encodeType)")
-        //let nalUnitSps = [UInt8](sdpInfo.videoTrack?.sps ?? Data())
-        //let nalUnitPps = [UInt8](sdpInfo.videoTrack?.pps ?? Data())
-        //print("nalUnitSps: \(nalUnitSps)\nnalUnitPps: \(nalUnitPps)")
-        
-        //let h264Decoder = H264Decoder()
-        
-        
-        
         if self.encodeType == "h264" {
             let rtpH264Parser = RtpH264Parser()
             if rtpPacket.count != 0 {
@@ -462,9 +430,6 @@ extension RTSPClient {
                 var prefixSize = 0
                 
                 if nalUnit.count != 0 {
-                    //print("rtpH264Parser result nalUnit: \(nalUnit)")
-                    //var type = VideoCodecUtils.getNalUnitType(data: nalUnit, offset: 0, length: nalUnit.count, isH265: false)
-                    //print("nalUnite Type: \(type)")
                     var prefixCount = 0
                     var nalUnitStart = VideoCodecUtils.searchForNalUnitStart(data: nalUnit, offset: offset, length: nalUnit.count, prefixSize: &prefixSize)
                     prefixCount += 1
@@ -473,9 +438,6 @@ extension RTSPClient {
                     
                     
                     if nalUnit[spsIndex] == 103 { // SPS 발견
-                        //let nalUnit2 = Array(nalUnit[prefixSize..<nalUnit.count])
-                        //print("nalUnit2: \(nalUnit2)")
-                        
                         for i in spsIndex..<(nalUnit.count - spsIndex) {
                             if prefixCount == 3 {
                                 break
@@ -512,8 +474,6 @@ extension RTSPClient {
                     print("pps nalUnit: \(self.pps)")
                     print("nalUnit count: \(nalUnit.count)")
                     print("nalDataIndex: \(nalDataIndex)")
-                    //h264Decoder.decode(nalData: Data(self.sps))
-                    //h264Decoder.decode(nalData: Data(self.pps))
                     videoDecodingInfo.sps = Data(self.sps.dropFirst(4))
                     videoDecodingInfo.pps = Data(self.pps.dropFirst(4))
                     
@@ -522,40 +482,12 @@ extension RTSPClient {
                         unitData = Data(nalUnit[nalDataIndex - 4..<nalUnit.count])
                         self.videoQueue.enqueue(unitData)
                         print("videoQueue enqueue 1")
-                        //self.semaphore.signal()
-                        //print("startReceivingData Semaphore signal")
-                        //h264Decoder.decode(nalData: Data(nalUnit[nalDataIndex - 4..<nalUnit.count]))
                     } else {
                         unitData = Data(nalUnit)
                         self.videoQueue.enqueue(unitData)
                         print("videoQueue enqueue 2")
-                        //self.semaphore.signal()
-                        //print("startReceivingData Semaphore signal")
-                        //h264Decoder.decode(nalData: Data(nalUnit))
                     }
-                    //h264Decoder.delegate = convertYUVToRGB
-                    
-                    
-                    //                    switch type {
-                    //                    case VideoCodecUtils.NAL_SPS: // 7
-                    //                        print("Video Nal Unit Type is SPS (\(type))")
-                    //                    case VideoCodecUtils.NAL_PPS: // 8
-                    //                        print( "Video Nal Unit Type is PPS (\(type))")
-                    //                    case VideoCodecUtils.NAL_IDR_SLICE: // 5
-                    //                        print( "Video Nal Unit Type is IDR Slice (\(type))")
-                    //                        //let unitSpsPps = nalUnitSps + nalUnitPps
-                    //                        //print("unitSpsPps: \(unitSpsPps)")
-                    //                        //nalUnitSps = []
-                    //                        //nalUnitPps = []
-                    //                    case VideoCodecUtils.NAL_SLICE: // 1
-                    //                        print( "Video Nal Unit Type is Slice (\(type))")
-                    //                    default:
-                    //                        print("Video Nal Unit Type is \(type)")
-                    //
-                    //                    }
                 } else {
-                    //self.semaphore.signal()
-                    //print("startReceivingData Semaphore signal")
                 }
                 
             }
@@ -589,20 +521,13 @@ extension RTSPClient {
         print("......Audio RTP Parsing......")
         guard sdpInfo.audioTrack != nil else { return }
         
-        //let config = audioTrack.config
-        //let mode = audioTrack.mode
-        
-        //print("rtpPacket: \(rtpPacket)")
-        //print("rtpPacket.count: \(rtpPacket.count)")
-        //print("Data(rtpPacket): \(Data(rtpPacket))")
-        
         let hexString = rtpPacket.map { String(format: "0x%02X", $0) }.joined(separator: " ")
-        //print("rtpPacket in Hex: \n\(hexString)")
+
         
         var payload = [UInt8]()
         // rtpPacket이 FF로 시작하면 2bytes를 제거하고
         // 그렇지 않으면 1byte를 제거한 뒤 adts header를 만들어 붙임
-        //payload = rtpPacket
+
         if rtpPacket.starts(with: [255]) {
             if rtpPacket.starts(with: [255, 255, 255]) {
                 //print("rtpPacket start with FF, FF, FF. remove 4byte")
@@ -618,46 +543,6 @@ extension RTSPClient {
             //print("rtpPacket start without FF. remove 1byte")
             payload = Array(rtpPacket.dropFirst(1))
         }
-        
-        
-        
-        // MARK: AAC dump file 만들기
-        /*
-        let newPayload = processAacRtpPacket(payload)
-        //print("paylaod with adts: \(newPayload)")
-        //print("newPayload: \(newPayload.map { String(format: "0x%02X", $0) }.joined(separator: " "))")
-        
-        self.audioDumpData.append(contentsOf: newPayload)
-        print("self.audioDumpData.count: \(self.audioDumpData.count)")
-        
-        //let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("adts_rtp_dump.aac").path()
-        let dumpFilePath = "/Users/yumi/Documents/audioDump/adts_rtp_dump.aac"
-        //MakeDumpFile.dumpRTPPacket(self.audioDumpData, to: dumpFilePath)
-        let fileURL = URL(fileURLWithPath: dumpFilePath)
-        if !FileManager.default.fileExists(atPath: fileURL.path) {
-            FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
-        }
-        //            else {
-        //                do {
-        //                    try FileManager.default.removeItem(at: fileURL)
-        //                } catch {
-        //                    print("failed remove existing file")
-        //                }
-        //            }
-        guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
-            print("Failed to open file for writing")
-            return
-        }
-        //fileHandle.seekToEndOfFile()
-        //fileHandle.write(Data(self.audioDumpData))
-        fileHandle.write(Data(self.audioDumpData))
-        fileHandle.closeFile()
-        
-        print("Dump saved at \(dumpFilePath)")
-        
-        //let decoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
-        */
-         
         var payloadData = Data()
         
         let sourceData: [UInt8] = payload
@@ -665,177 +550,7 @@ extension RTSPClient {
         payloadData = Data(payload)
         self.audioQueue.enqueue(payloadData)
         
-        
-        
-        /*
-        let sourceBufferSize = UInt32(sourceData.count)
-        
-        guard sourceBufferSize > 0 else { return }
-        
-        //let sourceBuffer = UnsafeMutableRawPointer.allocate(byteCount: Int(sourceBufferSize), alignment: 4)
-        //sourceBuffer.copyMemory(from: sourceData, byteCount: Int(sourceBufferSize))
-        
-        let sourceBuffer = UnsafeMutableRawPointer.allocate(byteCount: Int(sourceBufferSize), alignment: 4)
-        //        sourceData.withUnsafeBytes { rawBuffer in
-        //            sourceBuffer.copyMemory(from: rawBuffer.baseAddress!, byteCount: Int(sourceBufferSize))
-        //        }
-        sourceData.withUnsafeBytes { rawBuffer in
-            if let baseAddress = rawBuffer.baseAddress {
-                sourceBuffer.copyMemory(from: baseAddress, byteCount: Int(sourceBufferSize))
-            }
-        }
-        
-        // `sourceBuffer`의 내용을 16진수 문자열로 변환하여 출력
-        let bufferPointer = sourceBuffer.bindMemory(to: UInt8.self, capacity: Int(sourceBufferSize))
-        //let sourceBufferHexString = (0..<Int(sourceBufferSize)).map { String(format: "0x%02X", bufferPointer[$0]) }.joined(separator: " ")
-        
-        //print("sourceBuffer: \n\(sourceBufferHexString)")
-        
-        audioDecoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
-            print("오디오 디코딩 완료!")
-            
-            //            let dateFormatter = DateFormatter()
-            //            dateFormatter.locale = Locale(identifier: "ko_KR")
-            //            dateFormatter.timeZone = TimeZone(secondsFromGMT: 9 * 3600)
-            //            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSSS"
-            //            let timeStr = dateFormatter.string(from: Date())
-            //
-            //            print("time: \(timeStr)")
-            
-            //var audioBuffer = AudioBuffer()
-            let audioBuffer = audioBufferList.mBuffers
-            //var data = Data()
-            let data = Data(bytes: audioBuffer.mData!, count: Int(audioBuffer.mDataByteSize))
-            
-            //print("디코딩 된 pcm 크기: \(data.count)")
-            //print("UInt8로 보는 pcm Data:\n\([UInt8](data))")
-            //let pcmHexString = data.map { String(format: "0x%02X", $0) }.joined(separator: " ")
-            //print("pcmData in Hex: \n\(pcmHexString)")
-            
-            //self.pcmData.append(contentsOf: [UInt8](data))
-            self.pcmData.append([UInt8](data))
-            //print("pcmData total: \(self.pcmData.count)")
-            
-            //let pcmDataHexString = self.pcmData.map { String(format: "0x%02X", $0) }.joined(separator: " ")
-            //print("pcmData in Hex: \n\(pcmDataHexString)")
-            
-            /*
-            //let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("pcm_dump.pcm").path()
-            let dumpFilePath = "/Users/yumi/Documents/audioDump/pcm_dump.pcm"
-            //MakeDumpFile.dumpRTPPacket(self.pcmData, to: dumpFilePath)
-            let fileURL = URL(fileURLWithPath: dumpFilePath)
-            if !FileManager.default.fileExists(atPath: fileURL.path) {
-                FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
-            }
-            //            else {
-            //                do {
-            //                    try FileManager.default.removeItem(at: fileURL)
-            //                } catch {
-            //                    print("failed remove existing file")
-            //                }
-            //            }
-            guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
-                print("Failed to open file for writing")
-                return
-            }
-            
-             let flatArray = self.pcmData.flatMap { $0 }
-             //fileHandle.seekToEndOfFile()
-             fileHandle.write(Data(flatArray))
-            //fileHandle.write(data)
-            fileHandle.closeFile()
-            
-            print("Dump saved at \(dumpFilePath)")
-            */
-            
-            sourceBuffer.deallocate()
-            print("sourceBuffer.deallocate()")
-            
-            
-            
-            */
-            //self.semaphore.signal()
-            //print("startReceivingData Semaphore signal")
-    
-        
     }
-    
-//    func playPcmData() {
-//        print("playPcmData self.pcmData count: \(self.pcmData.count)")
-//        self.pcmPlayer.playPCMData(self.pcmData)
-//        self.audioPlayer.playPCMData(Data(self.pcmData))
-//    }
-            
-        
-        
-        
-
-//            //let duration: TimeInterval = 2.0
-//            let audioBuffer = audioBufferList.mBuffers
-//            let sampleRate: Double = 16000.0
-//            let pcmPlayer = PCMPlayer()
-//            
-//            let data = Data(bytes: audioBuffer.mData!, count: Int(audioBuffer.mDataByteSize))
-//
-//            //let ringBuffer = PCMRingBuffer(maxSize: 16000 * 2 * 5) // 16KHz, 16bit pcm 5초)
-//            self.ringBuffer.append(data)
-//            
-//            //let requiredByteSize = Int(sampleRate * duration) * MemoryLayout<Float32>.size
-//            //print("requiredByteSize: \(requiredByteSize)")
-//            
-//            // 2초 분량 가져오기
-//            if let chunk = self.ringBuffer.readChunk(size: 16000 * 2) {
-//                print("읽은 PCM 데이터 크기: \(chunk.count) bytes")
-//                pcmPlayer.playBufferedPCMData(pcmData: data)
-//            } else {
-//                print("버퍼에 충분한 데이터가 없음 ")
-//            }
-//            
-//            //ringBuffer.clear()
-//            
-//            //사용 후 메모리 해제
-//            sourceBuffer.deallocate()
-//            print("sourceBuffer.deallocate()")
-//        }
-    
-        
-        
-        
-//        let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("rtp_dump.aac").path()
-//        MakeDumpFile.dumpRTPPacket(self.audioDumpData, to: dumpFilePath)
-        
-        //        let decoder = AACLATMDecoder()
-        //        let pcmData = decoder?.decodeAAC(Data(self.audioDumpData))
-        //        print("pcmData : \(pcmData) bytes")
-        
-        
-//        
-//        var sourceFormat = AudioStreamBasicDescription()
-//        sourceFormat.mSampleRate = 16000
-//        sourceFormat.mFormatID = kAudioFormatMPEG4AAC
-//        sourceFormat.mFormatFlags = 0
-//        sourceFormat.mFramesPerPacket = 1024
-//        sourceFormat.mChannelsPerFrame = 1
-//        sourceFormat.mBitsPerChannel = 0
-//        sourceFormat.mBytesPerPacket = 0
-//        sourceFormat.mBytesPerFrame = 0
-//
-//        let audioDecoder = AudioDecoder(sourceFormat: sourceFormat, destFormatID: kAudioFormatLinearPCM, sampleRate: 16000, useHardwareDecode: false)
-//
-//        let sourceData: [UInt8] = self.audioDumpData
-//        let sourceBufferSize = UInt32(sourceData.count)
-//
-//        // 메모리 직접 할당
-//        let sourceBuffer = UnsafeMutableRawPointer.allocate(byteCount: Int(sourceBufferSize), alignment: 4)
-//        sourceBuffer.copyMemory(from: sourceData, byteCount: Int(sourceBufferSize))
-//
-//        audioDecoder.decodeAudio(sourceBuffer: sourceBuffer, sourceBufferSize: sourceBufferSize) { audioBufferList, numPackets, packetDesc in
-//            print("오디오 디코딩 완료!")
-//
-//            // 사용 후 메모리 해제
-//            sourceBuffer.deallocate()
-//        }
-    
     
     func getVideoQueue() -> ThreadSafeQueue<Data> {
         return videoQueue
@@ -1021,11 +736,6 @@ extension RTSPClient {
                             self.encodeType = type
                             
                             let payloadType = Int(values[0].split(separator: ":")[1])
-                            //                            print("SDP video payload type: \(String(describing: payloadType))")
-                            //                            self.sdpVideoPT = payloadType ?? 0
-                            //                            self.videoHz = Int(codecDetails[1].lowercased()) ?? 0
-                            //                            print("Video: \(self.encodeType)")
-                            //print("fps: \(self.videoHz)")
                             
                         } else if let audioTrack = track as? AudioTrack {
                             switch codecDetails[0].lowercased() {
@@ -1038,8 +748,6 @@ extension RTSPClient {
                             audioTrack.sampleRateHz = Int(codecDetails[1]) ?? 0
                             audioTrack.channels = codecDetails.count > 2 ? Int(codecDetails[2]) ?? 1 : 1
                             let payloadType = Int(values[0].split(separator: ":")[1])
-                            //                            print("SDP audio payload type: \(String(describing: payloadType))")
-                            //                            self.sdpAudioPT = payloadType ?? 0
                             
                             print("Audio: \(audioTrack.audioCodec), sample rate: \(audioTrack.sampleRateHz) Hz, channels: \(audioTrack.channels)")
                             
@@ -1081,7 +789,6 @@ extension RTSPClient {
                     // Setting VideoTrack
                     videoTrack.sps = nalSps
                     videoTrack.pps = nalPps
-                    //print("SPS: \(String(describing: videoTrack.sps)), PPS: \(String(describing: videoTrack.pps))")
                 }
             }
         }
@@ -1722,179 +1429,3 @@ extension RTSPClient {
  */
     
     
-
-
-/*
-func checkIsResponseOrRtp(buffer: [UInt8]) -> [UInt8]{
-    print("\ncheckIsResponseOrRtp START")
-    print("checkIsResponseOrRtp Buffer: \n\(buffer)")
-    print("buffer.count: \(buffer.count)")
-    //print("rtpLength: \(self.rtpLength)")
-    print("requisiteRtpBytes: \(self.requisiteRtpBytes)")
-    var remainingBytes: [UInt8] = []
-    for i in 0...buffer.count {
-        let readByte = buffer[i]
-        
-        if readByte == 0x24 { // $인 경우
-            print("----$ START----")
-            let headerBytes = Array(buffer[i..<i+4])
-            print("Header byte: \(headerBytes)")
-            let lengthBytes = Array(buffer[i+2..<i+4])
-            print("lengthBytes: \(lengthBytes)")
-            let lengthInt = Int(lengthBytes[0]) << 8 | Int(lengthBytes[1])
-            self.rtpLength = lengthInt
-            print("length: \(lengthInt) bytes")
-            print("Received RTP packet")
-            
-            if buffer.count >= lengthInt+4 { // buffer의 길이가 추출할 Length보다 긴 경우
-                print("check 1: received RTP data all")
-                guard self.checkDidReceivedAllRTPData(buffer: Array(buffer[i+4..<lengthInt+4]), length: lengthInt) else
-                {
-                    print("checkDidReceivedAllRTPData() return false")
-                    return []
-                    
-                }
-                //let dataArray = Array(buffer[i+4..<lengthInt+4])
-                //print("dataArray: \n\(dataArray)")
-                self.requisiteRtpBytes = 0
-                
-                remainingBytes = Array(buffer[lengthInt+4..<buffer.count])
-                return remainingBytes
-                
-            } else { // buffer 길이가 추출해야할 length 보다 짧은 경우 (RTP 데이터 짤림)
-                print("check 2: received RTP data slice")
-                let dataArray = Array(buffer[i..<buffer.count])
-                print("dataArray: \n\(dataArray)")
-                guard self.isZeroBuffer(buffer: Array(dataArray)) == false else {
-                    print("dataArray is fill with zero")
-                    return []
-                }
-                
-                print("self.rtpLength: \(self.rtpLength)")
-                print("dataArray.count - 4: \(dataArray.count - 4)")
-                //self.checkDataBuffer.append(contentsOf: dataArray)
-                self.requisiteRtpBytes = self.rtpLength - (dataArray.count - 4)
-                print("requisiteRtpBytes: \(self.requisiteRtpBytes)")
-                return dataArray
-            }
-        } else { // $가 아닌 경우
-            print("----NO $ START----")
-            if buffer[i..<i + 4] == [82, 84, 83, 80] { // RTSP Data인 경우
-                print("check 3: RTSP Response received")
-                guard let dataArray = self.extractUntilCRLF(buffer: buffer) else {
-                    print("Failed to find [13, 10, 13, 10]")
-                    return []
-                }
-                let rtspResponseString = String(bytes: Array(dataArray), encoding: .utf8)
-                print("RTSP Response: \n\(String(describing: rtspResponseString))")
-                
-                remainingBytes = Array(buffer[dataArray.count..<buffer.count])
-                self.rtpLength = 0
-                return remainingBytes
-                
-            } else { // RTSP 규격이 아니고 RTP header도 아닌 숫자 값이 도착함
-                guard self.requisiteRtpBytes != 0 else {
-                    print("check 5: CHECK WHAT HAPPEN IN BUFFER")
-                    guard self.isZeroBuffer(buffer: buffer) == false else {
-                        print("This is zero Buffer.")
-                        return []
-                    }
-                    print("rtpLength: \(self.rtpLength)")
-                    print("requisitedRtpBytes: \(self.requisiteRtpBytes)")
-                    return []
-                }
-                print("check 4: requistedData received")
-                print("rtpLength: \(self.rtpLength)")
-                print("requisitedRtpBytes: \(self.requisiteRtpBytes)")
-                //self.checkDataBuffer.append(contentsOf: buffer[i..<self.requisiteRtpBytes-1])
-                print("read rtp bytes : \n\(self.checkDataBuffer)")
-                print("is read all rtp data? \(self.checkDataBuffer.count == self.rtpLength)")
-                
-                remainingBytes = Array(buffer[self.requisiteRtpBytes..<buffer.count])
-                
-                self.checkDataBuffer = []
-                self.requisiteRtpBytes = 0
-                self.rtpLength = 0
-                
-                //remainingBytes = Array(buffer[self.requisiteRtpBytes..<buffer.count])
-                return remainingBytes
-            }
-        }
-    }
-    return []
-}
- 
-
-func checkDidReceivedAllRTPData(buffer: [UInt8], length: Int) -> Bool {
-    guard self.isZeroBuffer(buffer: buffer) == false else {
-        print("this buffer fill with zero")
-        return false
-    }
-    
-    if buffer.count == length {
-        return true
-    } else if buffer.count < length {
-        return false
-    }
-    
-    return false
-}
-
-func isZeroBuffer(buffer: [UInt8]) -> Bool {
-    var isZeroBuffer = false
-    var zeroCount = 0
-    
-    for byte in buffer {
-        //print("byte: \(byte), zerocount: \(zeroCount)")
-        if byte == 0 { // 0이 등장하면
-            zeroCount += 1 // zeroCount를 올린다
-            if zeroCount >= 9 { // zeroCount가 9개 이상이면
-                isZeroBuffer = true //buffer에 0이 많음
-                break // for문 탈출함
-            }
-        } else { // 0 등장하지 않으면
-            if zeroCount > 0 { // 이전 byte가 0이었을 경우
-                zeroCount = 0 // zeroCount를 0로 리셋
-                isZeroBuffer = false
-            }
-        }
-    }
-    return isZeroBuffer
-}
-
-func findDollarInBufer(buffer: [UInt8]) -> [UInt8] {
-    var bytesStartWithDollar: [UInt8] = []
-    
-    for i in 0...buffer.count {
-        if buffer[i] == 0x24 {
-            bytesStartWithDollar = Array(buffer[i..<buffer.count])
-            break
-        }
-    }
-    
-    return bytesStartWithDollar
-}
- 
- 
- func extractAndShift(from data: inout Data, range: Range<Data.Index>) -> Data {
-     let extractedData = data.subdata(in: range)
-     
-     data.removeSubrange(range)
-     
-     return extractedData
- }
- 
- 
- func extractUntilCRLF(buffer: [UInt8]) -> [UInt8]? {
-     let targetSequence: [UInt8] = [13, 10, 13, 10]
-     let targetLength = targetSequence.count
-     
-     for i in 0...(buffer.count - targetLength) {
-         if Array(buffer[i..<i + targetLength]) == targetSequence {
-             return Array(buffer[0..<i + targetLength])
-         }
-     }
-     
-     return nil
- }
- */

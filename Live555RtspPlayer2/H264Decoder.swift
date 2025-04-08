@@ -22,7 +22,6 @@ class H264Decoder {
     private var lastPTS = CMTime(value: 0, timescale: 30000)
     
     private let videoQueue: ThreadSafeQueue<Data>
-    //private let videoSemaphore = DispatchSemaphore(value: 1)
     
     var delegate: H264DecoderDelegate?
     
@@ -55,9 +54,6 @@ class H264Decoder {
         }
         let pixelBuffer = imageBuffer as CVPixelBuffer
         print("비디오 디코딩 완료 - CVPixelBuffer 얻음 \(pixelBuffer)")
-        //let dumpFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("decoded_frame.yuv").path()
-        //MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
-        //print("PixelBuffer 덤프 저장 경로: \(dumpFilePath)")
          
         if let refCon = decompressionOutputRefCon {
             let decoder = Unmanaged<H264Decoder>.fromOpaque(refCon).takeUnretainedValue()
@@ -71,56 +67,21 @@ class H264Decoder {
     }
     
     // H.264 NAL Unit 처리 함수
-    //func decode(nalData: Data) {
     func decode() {
         print("H264Decoder class started. decode()")
         DispatchQueue.global(qos: .userInteractive).async {
-            //self.videoSemaphore.wait()
-            //print("H264Decoder decode Semaphore wait")
             
             while true {
                 if let videoData = self.videoQueue.dequeue() {
                     let spsInfo = videoDecodingInfo.sps
                     let ppsInfo = videoDecodingInfo.pps
-                    //print("spsInfo: \([UInt8](spsInfo)), ppsInfo: \([UInt8](ppsInfo))")
                     self.setupDecoder(sps: spsInfo, pps: ppsInfo)
-                    //print("videoData: \([UInt8](videoData))")
                     self.decodeFrame(nalData: videoData)
                 } else {
                     usleep(10_000)
                 }
             }
-            //self.videoSemaphore.signal()
-            //print("H264Decoder decode Semaphore signal")
         }
-        
-        /*
-        print("decode NAL Data (첫 32바이트): \(nalData.prefix(32).map { String(format: "%02X", $0) }.joined(separator: " "))")
-        let nalType = nalData[4] & 0x1F // NAL Unit Type 추출
-        print("decode nalData: \(nalData[4])")
-        print("decode NAL Type: \(nalType)")
-        
-        switch nalType {
-        case 7: // SPS (Sequence Parameter Set)
-            print("Received SPS")
-            self.sps = nalData.dropFirst(4)
-        case 8: // PPS (Picture Parameter Set)
-            print("Received PPS")
-            self.pps = nalData.dropFirst(4)
-        case 5, 1: // I-Frame (IDR) 또는 P-Freme (첫 프레임은 5, 이후로는 1)
-            print("Received Frame (I/P)")
-            print("Frame Index: \(frameIndex)")
-            guard let sps = sps, let pps = pps else {
-                print("SPS/PPS 정보가 없습니다. 프레임을 디코딩 할 수 없습니다.")
-                return
-            }
-            setupDecoder(sps: sps, pps: pps) // 디코더 설정
-            decodeFrame(nalData: nalData) // 디코딩 수행
-        default:
-            print("Unsupported NAL Type: \(nalType)")
-        }
-         */
-        
     }
     
     // Decompression: 감압. 압축 해제
@@ -156,75 +117,12 @@ class H264Decoder {
         }
         guard status == noErr, let formatDescription = formatDescription else {
             print("CMVideoFormatDescription Create Failed: \(status)")
-            //self.videoSemaphore.signal()
-            //print("H264Decoder decode Semaphore signal")
             return
         }
         
         print("CMVideoFormatDescription 생성 성공 \(status)")
         print("formatDescription: \(String(describing: formatDescription))")
-        
-        /*
-         ====================================================================================
-        // SPS, PPS 데이터를 UnsafePointer<UInt8>로 변환하여 사용
-//        let parameterSetPointers: [UnsafePointer<UInt8>] = [
-//            (sps as NSData).bytes.bindMemory(to: UInt8.self, capacity: sps.count),
-//            (pps as NSData).bytes.bindMemory(to: UInt8.self, capacity: pps.count)
-//        ]
-//        let parameterSetSize: [Int] = [sps.count, pps.count]
-        let spsPointer = sps.withUnsafeBytes { $0.baseAddress!.assumingMemoryBound(to: UInt8.self) }
-        let ppsPointer = pps.withUnsafeBytes { $0.baseAddress!.assumingMemoryBound(to: UInt8.self) }
-        
-        // H.264의 SPS, PPS 데이터를 사용하여 CMFormatDescriptionRef 생성
-//        let status = CMVideoFormatDescriptionCreateFromH264ParameterSets(
-//            allocator: kCFAllocatorDefault,
-//            parameterSetCount: 2,
-//            parameterSetPointers: parameterSetPointers,
-//            parameterSetSizes: parameterSetSize,
-//            nalUnitHeaderLength: 4, // 4바이트 NAL 헤더 길이 (0x00 00 00 01)
-//            formatDescriptionOut: &formatDescription
-//        )
-        
-        // CMFormatDescription 생성
-        // Creates a format description for a video media stream that the parameter set describes.
-        let status = CMVideoFormatDescriptionCreateFromH264ParameterSets(
-            allocator: kCFAllocatorDefault,
-            parameterSetCount: 2,
-            parameterSetPointers: [spsPointer, ppsPointer],
-            parameterSetSizes: [sps.count, pps.count],
-            nalUnitHeaderLength: 4, // 4바이트 NAL 헤더 길이 (0x00 00 00 01)
-            formatDescriptionOut: &formatDescription
-        )
-        
-        // CMFormatDescription 생성 확인 (성공 시 formatDescription 저장)
-        guard status == noErr, let formatDescription = formatDescription else {
-            print("CMVideoFormatDescription Create Failed: \(status)")
-            return
-        }
-        print("CMVideoFormatDescription 생성 성공 \(status)")
-        print("formatDescription: \(formatDescription)")
-         
-         // formatDescription 에서 avcC 데이터 추출하여 확인 (이 데이터가 SPS/PPS와 동일하다면 제대로 생성된 것)
-         // avcC의 구조:  01 [profile] [compatibility] [level] [flags] SPS_count SPS ... PPS_count PPS ...
-         // SPS_count: 0xE1(1개), PPS_count: 0x01(1개), 이후 데이터로 SPS/PPS가 일치해야함
-         if let extensions = CMFormatDescriptionGetExtensions(formatDescription) as? [String: Any],
-            let atoms = extensions["SampleDescriptionExtensionAtoms"] as? [String: Any],
-            let avcCData = atoms["avcC"] as? Data {
-             print("avcC Hex: \(avcCData.map { String(format: "%02X", $0) }.joined(separator: " "))")
-         }
-         
-         // CMVideoFormatDescription 해상도 출력하여 SPS의 해상도와 일치하는지 확인
-         let width = CMVideoFormatDescriptionGetDimensions(formatDescription).width
-         let height = CMVideoFormatDescriptionGetDimensions(formatDescription).height
-         print("디코딩 해상도: \(width)x\(height)")
-         
-         
-         ====================================================================================
-        */
-        
-        
-    
-        
+
         // 콜백 초기화
         var outputCallback = VTDecompressionOutputCallbackRecord()
         outputCallback.decompressionOutputCallback = nil
@@ -238,22 +136,6 @@ class H264Decoder {
         )
         
         let decoderParameters = NSMutableDictionary()
-        
-        // 디코딩 된 이미지 속 버퍼 속성 설정
-        // kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: YUV 4:2:0 format
-//        let attributes: [NSString: Any] = [
-//            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-//            kCVPixelBufferWidthKey: formatDescription.dimensions.width,
-//            kCVPixelBufferHeightKey: formatDescription.dimensions.height
-//        ]
-//        print("attributes as CFDictionary: \(attributes as CFDictionary)")
-//        let pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange // NV12
-        
-//        let attributes: [NSString: Any] = [
-//            kCVPixelBufferPixelFormatTypeKey : NSNumber(value: pixelFormat),
-//            kCVPixelBufferIOSurfacePropertiesKey: [:] as  AnyObject,
-//            kCVPixelBufferOpenGLESCompatibilityKey: NSNumber(booleanLiteral: true)
-//        ]
         
         // kCVPixelFormatType_420YpCbCr8BiPlanarFullRange : NV12
         let attributes: [NSString: AnyObject] = [
@@ -280,8 +162,6 @@ class H264Decoder {
         
         if decompressionSession == nil {
             print("decompressionSession이 생성되지 않았습니다.")
-            //self.videoSemaphore.signal()
-            //print("H264Decoder decode Semaphore signal")
         } else {
             print("decompressionSession 생성 완료: \(String(describing: decompressionSession))")
             if let session = decompressionSession {
@@ -291,8 +171,6 @@ class H264Decoder {
         
         if statusSession != noErr {
             print("VTDecompressionSession 생성 실패: \(statusSession)")
-            //self.videoSemaphore.signal()
-            //print("H264Decoder decode Semaphore signal")
         } else {
             print("VTDecompressionSession 생성 성공 \(statusSession)")
         }
@@ -304,8 +182,6 @@ class H264Decoder {
         guard let decompressionSession = self.decompressionSession,
               let formatDescription = self.formatDescription else {
             print("decompressionSession이 설정되지 않음")
-            //self.videoSemaphore.signal()
-            //print("H264Decoder decode Semaphore signal")
             return
         }
         
@@ -313,8 +189,6 @@ class H264Decoder {
         //VTDecompressionSessionInvalidate(decompressionSession)
         
         var blockBuffer: CMBlockBuffer?
-        //let nalDataWithStartCode = Data([0x00, 0x00, 0x00, 0x01]) + nalData // start code 추가함
-        //let nalDataWithStartCode = nalData
         print("nalData count: \(nalData.count)")
         
         var nalSize = CFSwapInt32HostToBig(UInt32(nalData.count - 4)) // NALU 길이를 4바이트로 변환
@@ -340,8 +214,6 @@ class H264Decoder {
         
         guard statusBB == kCMBlockBufferNoErr, let blockBuffer = blockBuffer else {
             print("CMBlockBuffer 생성 실패: \(statusBB), \(String(describing: blockBuffer))")
-            //self.videoSemaphore.signal()
-            //print("H264Decoder decode Semaphore signal")
             return
         }
         print("CMBlockBuffer 생성 성공: \(statusBB), \(String(describing: blockBuffer))")
@@ -374,8 +246,6 @@ class H264Decoder {
         
         guard statusSB == noErr, let sampleBuffer = sampleBuffer else {
             print("CMSampleBuffer 생성 실패: \(statusSB), \(String(describing: sampleBuffer))")
-            //self.videoSemaphore.signal()
-            //print("H264Decoder decode Semaphore signal")
             return
         }
         print("CMSampleBuffer 생성 성공: \(statusSB), \(String(describing: sampleBuffer))")
@@ -398,12 +268,9 @@ class H264Decoder {
         
         if statusDecode != noErr {
             print("decoding error: \(statusDecode)")
-            //self.videoSemaphore.signal()
-            //print("H264Decoder decode Semaphore signal")
         }
         
         frameIndex += 1
-        //print("decoding 성공 statusDecode : \(statusDecode)")
     }
     
     func getCorrectPTS(for frameIndex: Int) -> CMTime {
@@ -416,159 +283,3 @@ class H264Decoder {
         }
     }
 }
-
-
-
-
-
-//
-//let statusDecode = decompressionSession.decodeFrame(
-//    samplebuffer: sampleBuffer,
-//    outputHandler: { status, flags, imageBuffer, timeStamp, duration in
-//        if status == noErr, let imageBuffer = imageBuffer {
-//            print("Decoded frame: \(imageBuffer)")
-//        } else {
-//            print("Decoding error: \(status)")
-//        }
-//    }
-//)
-//
-//extension VTDecompressionSession {
-//    func decodeFrame(
-//        samplebuffer: CMSampleBuffer,
-//        flags: VTDecodeFrameFlags = [],
-//        outputHandler: @escaping VTDecompressionOutputHandler
-//    ) -> OSStatus {
-//        var infoFlags = VTDecodeInfoFlags.asynchronous
-//        return VTDecompressionSessionDecodeFrame(
-//            self, sampleBuffer: samplebuffer,
-//            flags: flags,
-//            infoFlagsOut: &infoFlags,
-//            outputHandler: outputHandler
-//        )
-//    }
-//}
-
-
-
-
-
-
-
-
-//
-//func createAVCHeader(sps: Data, pps: Data) -> Data? {
-//    guard sps.count > 4, pps.count > 4 else {
-//        print("SPS 또는 PPS 데이터가 너무 짧습니다. ")
-//        return nil
-//    }
-//    
-//    let spsBody = sps.dropFirst(4)
-//    let ppsBody = pps.dropFirst(4)
-//    
-//    let spsBodyLen = spsBody.count
-//    let ppsBodyLen = ppsBody.count
-//    
-//    let length = 8 + spsBodyLen + 1 + 2  + ppsBodyLen // 전체 버퍼 크기 계산
-//    let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: length)
-//    //defer { buf.deallocate() } // 메모리 해제
-//    
-//    var idx = 0
-//    
-//    buf[idx] = 0x01 // Version
-//    idx += 1
-//    
-//    buf[idx] = sps[5] // Profile
-//    idx += 1
-//    
-//    buf[idx] = sps[6] // Compatibility
-//    idx += 1
-//    
-//    buf[idx] = sps[7] // Level
-//    idx += 1
-//    
-//    buf[idx] = 0xFC | 3 // Reversed 6bit + NALU Length Size -1 (2bit)
-//    idx += 1
-//    
-//    buf[idx] = 0xE0 | 1 // Reversed 3bit + SPS Count (1개)
-//    idx += 1
-//    
-//    buf[idx] = UInt8((spsBodyLen & 0xFF00) >> 8) // SPS 길이 (상위 바이트)
-//    idx += 1
-//    
-//    buf[idx] = UInt8(spsBodyLen & 0x00FF) // SPS 길이 (하위바이트)
-//    idx += 1
-//    
-//    // SPS 데이터 복사
-////        spsBody.withUnsafeBytes { rawBuffer in
-////            buf.advanced(by: idx).update(from: rawBuffer.bindMemory(to: UInt8.self).baseAddress!, count: spsBodyLen)
-////        }
-////        idx += spsBodyLen
-//    
-//    // SPS 복사 (NAL 헤더 제거)
-//    spsBody.withUnsafeBytes { rawBuffer in
-//        let base = rawBuffer.bindMemory(to: UInt8.self).baseAddress!
-//        memcpy(buf + idx, base + 4, spsBodyLen) // 4바이트 NAL 헤더 제거
-//    }
-//    idx += spsBodyLen
-//    
-//    buf[idx] = 0x01 // PPS 개수 (1개)
-//    idx += 1
-//    
-//    buf[idx] = UInt8((ppsBodyLen & 0xFF00) >> 8) // PPS 길이 (상위 바이트)
-//    idx += 1
-//    
-//    buf[idx] = UInt8(ppsBodyLen & 0x00FF) // PPS 길이 (하위 바이트)
-//    idx += 1
-//    
-//    // PPS 데이터 복사
-////        ppsBody.withUnsafeBytes { rawBuffer in
-////            buf.advanced(by: idx).update(from: rawBuffer.bindMemory(to: UInt8.self).baseAddress!, count: ppsBodyLen)
-////        }
-//    
-//    // PPS 복사 (NAL 헤더 제거)
-//    ppsBody.withUnsafeBytes { rawBuffer in
-//        let base = rawBuffer.bindMemory(to: UInt8.self).baseAddress!
-//        memcpy(buf + idx, base + 4, ppsBodyLen) // 4바이트 NAL 헤더 제거
-//    }
-//    
-//    // Data 객체 생성 (메모리 자동 해제 설정)
-//    let avccData = Data(bytesNoCopy: buf, count: length, deallocator: .free)
-//    
-//    return avccData
-//    
-//}
-
-//guard let avccData = self.createAVCHeader(sps: sps, pps: pps) else {
-//    print("AVCC 헤더 생성 실패")
-//    return
-//}
-//print("AVCC 헤더 생성 성공 : \(avccData as NSData)")
-//
-//// CFMutableDictionaryRef 생성
-//let ext = NSMutableDictionary()
-//ext["avcC"] = avccData
-//
-//// NSDictionary -> CFDicotionaryRef 변환
-//let dictionary: [CFString: Any] = [
-//    kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms: ext
-//]
-//
-//// CMVideoFormatDescriptionCreate 호출하여 H.264 포맷 정보 포함하는 CMFormatDescriptionRef 생성
-//// width, height는 sps, pps에 포함되어 있음
-//// formatDesc는 이후 비디오 디코딩에 사용됨
-//var formatDesc: CMFormatDescription?
-//let status = CMVideoFormatDescriptionCreate(
-//    allocator: nil,
-//    codecType: kCMVideoCodecType_H264,
-//    width: 1920,
-//    height: 1080,
-//    extensions: dictionary as CFDictionary,
-//    formatDescriptionOut: &formatDesc
-//)
-//
-//if status == noErr {
-//    print("CMVideoFormatDescription 생성 성공")
-//} else {
-//    print("CMVideoFormatDescription 생성 실패: \(status)")
-//}

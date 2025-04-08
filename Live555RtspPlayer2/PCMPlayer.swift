@@ -27,7 +27,6 @@ class PCMPlayer {
             print("[PCMPlayer] Failed to create inputFormat")
             return
         }
-        //print("[PCMPlayer] Successed to create inputFormat: \(inputFormat)")
         
         //outputFormat
         guard let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000.0, channels: 1, interleaved: false) else {
@@ -36,7 +35,6 @@ class PCMPlayer {
         }
      
         self.audioEngine.connect(self.playerNode, to: self.audioEngine.outputNode, format: outputFormat)
-        //print("[PCMPlayer] Audio Player Node connected to AudioEngine with format")
         
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)

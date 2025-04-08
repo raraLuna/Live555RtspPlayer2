@@ -37,11 +37,8 @@ class AudioDecoder {
     }
     
     // MARK: Public Functions
-    //func decodeAudio(sourceBuffer: UnsafeMutableRawPointer, sourceBufferSize: UInt32, completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
     func decodeAudio(completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
         DispatchQueue.global(qos: .userInteractive).async {
-            //self.audioSemaphore.wait()
-            //print("decodeAudio decode Semaphore wait")
             while true {
                 if let audioData = self.audioQueue.dequeue() {
                     let sourceData: [UInt8] = [UInt8](audioData)
@@ -59,8 +56,6 @@ class AudioDecoder {
                     print("sourceBuffer.deallocate()")
                 }
             }
-            //self.audioSemaphore.signal()
-            //print("decodeAudio decode Semaphore signal")
         }
     }
     
@@ -74,10 +69,6 @@ class AudioDecoder {
     
     // MARK: Private Functions
     private func configureDecoder(sourceFormat: inout AudioStreamBasicDescription, destFormat: inout AudioStreamBasicDescription, formatID: AudioFormatID, useHardwareDecode: Bool) -> AudioConverterRef? {
-//        if formatID != kAudioFormatLinearPCM {
-//            print("Unsupported format after decoding")
-//            return nil
-//        }
         // mFormatFlags:
         ///오디오 데이터의 속성(Endian, 부호, Float/Integer, 패킹 여부 등을 설정
         ///사용하는 값은 formatID에 따라 다름
@@ -123,50 +114,34 @@ class AudioDecoder {
         destFormat.mChannelsPerFrame = 1
         destFormat.mBytesPerFrame = 2
         destFormat.mBytesPerPacket = 2
-        //destFormat.mBytesPerFrame = destFormat.mBitsPerChannel / 8 * destFormat.mChannelsPerFrame
-        //destFormat.mBytesPerPacket = destFormat.mBytesPerFrame * destFormat.mFramesPerPacket
-        //print("destFormat.mFormatFlags: \(destFormat.mFormatFlags)")
-        //printAudioStreamBasicDescription(destFormat)
         
         guard let audioClassDesc = getAudioClassDescription(type: formatID, manufacturer: kAppleSoftwareAudioCodecManufacturer) else {
             print("configureDecoder audioClassDesc failed")
-            //self.audioSemaphore.signal()
-            //print("decodeAudio decode Semaphore signal")
             return nil
         }
         
-        //var converter: AudioConverterRef?
         let status = AudioConverterNewSpecific(&sourceFormat, &destFormat, destFormat.mChannelsPerFrame, audioClassDesc, &audioConverter)
-        //let status = AudioConverterNew(&sourceFormat, &destFormat, &converter)
         
         if status != noErr {
             print("Audio Converter creation failed")
-            //self.audioSemaphore.signal()
-            //print("decodeAudio decode Semaphore signal")
             return nil
         }
         
-        //print("Audio converter created successfully")
         return audioConverter
     }
     
     private func decodeFormat(converter: AudioConverterRef?, sourceBuffer: UnsafeMutableRawPointer, sourceBufferSize: UInt32, sourceFormat: AudioStreamBasicDescription, destFormat: AudioStreamBasicDescription, completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
-        //print("decodeFormat() called")
         guard let converter = converter else { print("converter is nil")
-            //self.audioSemaphore.signal()
-            //print("decodeAudio decode Semaphore signal")
             return }
         
         let ioOutputDataPackets: UInt32 = 1024 // 변환 예정인 패킷 수(AAC는 1024 고정)
         // 패킷 개수 x 채널 수 x 바이트 크기 (PCM의 경우 한 프레임 당 mBytesPerFrame만큼의 데이터를 가짐
         let outputBufferSize = ioOutputDataPackets * destFormat.mChannelsPerFrame * destFormat.mBytesPerFrame
-        //print("outputBufferSize: \(outputBufferSize)")
         
         var fillBufferList = AudioBufferList()
         fillBufferList.mNumberBuffers = 1
         fillBufferList.mBuffers.mNumberChannels = destFormat.mChannelsPerFrame
         fillBufferList.mBuffers.mDataByteSize = outputBufferSize
-        //fillBufferList.mBuffers.mData = malloc(Int(outputBufferSize))
         fillBufferList.mBuffers.mData = UnsafeMutableRawPointer.allocate(byteCount: Int(outputBufferSize), alignment: 4)
         
         // `packetDesc` 메모리 할당
@@ -181,7 +156,6 @@ class AudioDecoder {
                                      sourceBuffer: sourceBuffer,
                                      packetDesc: packetDescPointer
         )
-        //print("userInfo: \(userInfo)")
         
         // `outputPacketDesc` 메모리 할당
         // PCM 변환에서는 패킷 설명이 필요 없으므로 nil로 설정 가능
@@ -189,7 +163,6 @@ class AudioDecoder {
         outputPacketDescPointer.initialize(to: AudioStreamPacketDescription())
 
         var numPackets = ioOutputDataPackets
-        //print("numPackets: \(numPackets)")
 
         // `AudioConverterFillComplexBuffer` 호출
         let status = AudioConverterFillComplexBuffer(
@@ -203,8 +176,6 @@ class AudioDecoder {
 
         if status != noErr {
             print("AudioConverterFillComplexBuffer failed: \(status)")
-            //self.audioSemaphore.signal()
-            //print("decodeAudio decode Semaphore signal")
             return
         }
         
@@ -216,20 +187,12 @@ class AudioDecoder {
 
         // 메모리 해제
         packetDescPointer.deallocate()
-        //print("packetDescPointer.deallocate()")
         outputPacketDescPointer.deallocate()
-        //print("outputPacketDescPointer.deallocate()")
         fillBufferList.mBuffers.mData?.deallocate()
-        //print("fillBufferList.mBuffers.mData?.deallocate()")
     }
     
     func verifyDecodedAudio(bufferList: AudioBufferList, expectedFormat: AudioStreamBasicDescription) {
         let buffer = bufferList.mBuffers
-        
-        //print("✅ Decoded Audio Verification")
-        //print(" - Number of Buffers: \(bufferList.mNumberBuffers)")
-        //print(" - Data Byte Size: \(buffer.mDataByteSize)")
-        //print(" - Number of Channels: \(buffer.mNumberChannels)")
         
         if bufferList.mNumberBuffers != 1 {
             print("⚠️ Warning: Unexpected number of buffers!")
@@ -239,14 +202,10 @@ class AudioDecoder {
         
         if buffer.mNumberChannels != expectedFormat.mChannelsPerFrame {
             print("❌ Channel count mismatch! Expected: \(expectedFormat.mChannelsPerFrame), Got: \(buffer.mNumberChannels)")
-            //self.audioSemaphore.signal()
-            //print("decodeAudio decode Semaphore signal")
         }
         
         if buffer.mDataByteSize == 0 || buffer.mData == nil {
             print("❌ No audio data found!")
-            //self.audioSemaphore.signal()
-            //print("decodeAudio decode Semaphore signal")
         } else {
             print("✅ Audio data is present")
         }
@@ -266,8 +225,6 @@ class AudioDecoder {
             ioNumberDataPackets.pointee = 0
             return -1
         }
-        
-        //print("info.sourceDataSize: \(info.sourceDataSize), \ninfo.sourceChannelsPerFrame: \(info.sourceChannelsPerFrame), \ninfo.sourceBuffer: \(String(describing: info.sourceBuffer)), \ninfo.packetDesc: \(String(describing: info.packetDesc))")
         
         // outDataPacketDescription 타입: UnsafeMutablePointer<UnsafeMutablePointer<AudioStreamPacketDescription>?>
         // packetDesc 타입: UnsafeMutablePointer<AudioStreamPacketDescription>?
@@ -292,8 +249,6 @@ class AudioDecoder {
     
     // MARK: Utility Functions
     private func getAudioClassDescription(type: AudioFormatID, manufacturer: UInt32) -> UnsafePointer<AudioClassDescription>? {
-        //print("getAudioClassDescription() called")
-        //print("getAudioClassDescription type:\(type), manufacturer: \(manufacturer)")
         var propertyDataSize: UInt32 = 0
         var decoderSpecific = type
         
@@ -325,11 +280,8 @@ class AudioDecoder {
         
         if status != noErr || propertyDataSize == 0 {
             print("Failed to get audio decoder info. status: \(status), size: \(propertyDataSize)")
-            //self.audioSemaphore.signal()
-            //print("decodeAudio decode Semaphore signal")
             return nil
         }
-        //print("propertyDataSize: \(propertyDataSize)")
         
         let count = Int(propertyDataSize) / MemoryLayout<AudioClassDescription>.size
         var descriptions = [AudioClassDescription](repeating: AudioClassDescription(), count: count)
@@ -338,12 +290,8 @@ class AudioDecoder {
         
         if status2 != noErr {
             print("Failed to get audio decoder property")
-            //self.audioSemaphore.signal()
-            //print("decodeAudio decode Semaphore signal")
             return nil
         }
-        
-        //return descriptions.first { $0.mSubType == type && $0.mManufacturer == manuFacturer }.map { UnsafePointer<AudioClassDescription>(bitPattern: $0.hashValue) } ?? nil
         
         // 1. $0.mSubType == type && $0.mManufacturer == manuFacturer 조건을 만족하는 첫번째 요소를 찾음
         // 2. map은 옵셔널 바인딩과 같은 역할을 함. first가 nil이 아니라면 클로저 내부 코드를 실행. (flatMap도 nil일 경우를 대응)
@@ -372,133 +320,3 @@ class AudioDecoder {
         print("")
     }
 }
-
-
-
-//
-//extension FixedWidthInteger {
-//    var littleEndianData: Data {
-//        withUnsafeBytes(of: self.littleEndian, { Data($0) })
-//    }
-//}
-
-
-// wav 파일로 생성 -> 재생 안됨 header 생성 틀렸을 가능성 있음
-
-//let data = Data(bytes: fillBufferList.mBuffers.mData!, count: Int(fillBufferList.mBuffers.mDataByteSize))
-//print("pcm data: \(data)")
-//
-//for _ in 0..<20 {
-//    wavTestData.append(data)
-//    
-//}
-//print("wavTestData.count: \(wavTestData.count)")
-//if wavTestData.count > 40000 {
-//    let wavHeader = createWavHeader(sampleRate: 16000, numChannels: 1, bitsPerSample: 16, dataSize: UInt32(data.count))
-//    let wavFilePath = FileManager.default.temporaryDirectory.appendingPathComponent("wav_dump.wav").path()
-//    let fileURL = URL(fileURLWithPath: wavFilePath)
-//
-//    if !FileManager.default.fileExists(atPath: fileURL.path) {
-//        FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
-//    }
-//    else {
-//        do {
-//            try FileManager.default.removeItem(at: fileURL)
-//        } catch {
-//            print("failed remove existing file")
-//        }
-//    }
-//
-//    do {
-//        try wavHeader.write(to: fileURL)
-//        let fileHandle = try FileHandle(forWritingTo: fileURL)
-//        fileHandle.seekToEndOfFile()
-//        fileHandle.write(wavTestData)
-//        fileHandle.closeFile()
-//        wavTestData = Data()
-//        print("WAV Dump saved at \(wavFilePath)")
-//    } catch {
-//        print("save wav file failed")
-//    }
-//    
-//}
-
-///// WAV 파일 헤더 생성 함수
-//func createWavHeader(sampleRate: UInt32, numChannels: UInt16, bitsPerSample: UInt16, dataSize: UInt32) -> Data {
-//    let byteRate = sampleRate * UInt32(numChannels) * UInt32(bitsPerSample / 8)
-//    let blockAlign = numChannels * (bitsPerSample / 8)
-//    let chunkSize = 36 + dataSize // 전체 파일 크기 - 8
-//    var header = Data()
-//
-//    header.append("RIFF".data(using: .ascii)!)               // ChunkID (RIFF)
-//    header.append(UInt32(chunkSize).littleEndianData)       // ChunkSize
-//    header.append("WAVE".data(using: .ascii)!)              // Format
-//
-//    header.append("fmt ".data(using: .ascii)!)              // Subchunk1ID
-//    header.append(UInt32(16).littleEndianData)              // Subchunk1Size (16 for PCM)
-//    header.append(UInt16(1).littleEndianData)               // AudioFormat (1 = PCM)
-//    header.append(numChannels.littleEndianData)             // NumChannels
-//    header.append(sampleRate.littleEndianData)              // SampleRate
-//    header.append(byteRate.littleEndianData)                // ByteRate
-//    header.append(blockAlign.littleEndianData)              // BlockAlign
-//    header.append(bitsPerSample.littleEndianData)           // BitsPerSample
-//
-//    header.append("data".data(using: .ascii)!)              // Subchunk2ID
-//    header.append(dataSize.littleEndianData)                // Subchunk2Size
-//
-//    print("wav header created: \(header)")
-//    return header
-//}
-
-
-
-
-
-
-
-// 링버퍼 형식: 누적하면서 부분 데이터 output 및 부분 데이터 input
-//class PCMRingBuffer {
-//    private let queue = DispatchQueue(label: "com.pcmRignBuffer.queue", attributes: .concurrent)
-//    private var buffer = Data()
-//    private let maxSize: Int
-//
-//    init(maxSize: Int) {
-//        self.maxSize = maxSize
-//    }
-//
-//    // PCM 데이터 추가 (오래 된 데이터는 자동 삭제 되도록)
-//    func append(_ newData: Data) {
-//        if newData.count + buffer.count >= maxSize {
-//            let removeDataSize = newData.count + buffer.count - maxSize
-//            self.buffer.removeFirst(removeDataSize)
-//        }
-//
-//        queue.async(flags: .barrier) {
-//            self.buffer.append(newData)
-//        }
-//    }
-//
-//    // 일정 크기(Chunk) 만큼 데이터 꺼내기
-//    func readChunk(size: Int) -> Data? {
-//        return queue.sync {
-//            guard buffer.count >= size else { return nil } // 데이터가 충분하지 않은 경우
-//            let chunk = buffer.prefix(size)
-//            buffer.removeFirst(size) // 읽은 데이터 제거
-//            return chunk
-//        }
-//    }
-//
-//    // 현재 버퍼 크기 확인
-//    func currentSize() -> Int {
-//        return queue.sync {
-//            buffer.count
-//        }
-//    }
-//
-//    // 버퍼 초기화
-//    func clear() {
-//        queue.async(flags: .barrier){
-//            self.buffer.removeAll()
-//        }
-//    }
-//}

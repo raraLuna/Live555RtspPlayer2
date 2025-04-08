@@ -46,7 +46,7 @@ class ViewController: UIViewController {
         // Do any additional setup after loading the view.
         //let rtspUrl = "rtsp://192.168.0.50:554/test.264"
         //let rtspUrl = "rtsp://192.168.0.139:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
-        //let rtspUrl = "rtsp://192.168.0.139:554/TheSimpsonsMovie_1080x800_h264_AAC.mkv"
+        //let rtspUrl = "rtsp://169.254.53.31:554/TheSimpsonsMovie_1080x800_h264_AAC.mkv"
         //let rtspUrl = "rtsp://192.168.0.50:554/TheSimpsonsMovie_1080x800_h265_AAC.mkv"
         
         
@@ -239,31 +239,8 @@ class ViewController: UIViewController {
             
             rtspClient.closeConnection()
             self.rtspClient = nil
-            
-            
-//            let rtspClient = RTSPClient(serverAddress: self.urlHost, serverPort: UInt16(self.urlPort), serverPath: self.urlPath, url: self.url)
-//            if !rtspClient.connect() {
-//                return
-//            }
-//            rtspClient.sendTearDown(session: self.rtspSession, userAgent: self.userAgent)
-//            let tearDownResponse = rtspClient.readResponse()
-//            print("TEARDOWN Response: \(tearDownResponse)")
-//            
-//            guard rtspClient.readResponseStatusCode(response: tearDownResponse) == 200 else {
-//                return
-//            }
-//            rtspClient.closeConnection()
         }
     }
-//    
-//    @IBAction func playAudio(_ sender: Any) {
-//        DispatchQueue.global(qos: .background).async {
-//            guard let rtspClient = self.rtspClient, self.isRunning else {
-//                return
-//            }
-//            rtspClient.playPcmData()
-//        }
-//    }
     
     private func startRTSP() {
         DispatchQueue.global(qos: .background).async {
@@ -372,8 +349,6 @@ class ViewController: UIViewController {
             rtspClient.startReceivingData(sdpInfo: sdpInfo)
 
             let h264Decoder = H264Decoder(videoQueue: rtspClient.getVideoQueue())
-            //let convertYUVToRGB = YUVNV12toRGB()
-            //h264Decoder.delegate = convertYUVToRGB
 
             h264Decoder.delegate = self.metalRender
             h264Decoder.decode()
