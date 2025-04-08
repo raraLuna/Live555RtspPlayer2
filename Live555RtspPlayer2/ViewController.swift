@@ -37,6 +37,7 @@ class ViewController: UIViewController {
     private var pcmData: [[UInt8]] = []
     
     var metalRender: MetalRender!
+    private let audioPcmQueue = ThreadSafeQueue<[UInt8]>()
     
     let backgroundQueue = DispatchQueue(label: "com.olivendove.backgroundQueue", qos: .background)
     
@@ -377,47 +378,17 @@ class ViewController: UIViewController {
             h264Decoder.delegate = self.metalRender
             h264Decoder.decode()
             
-            let pcmPlayer = PCMPlayer()
+            let pcmPlayer = PCMPlayer(audioPcmQueue: self.audioPcmQueue)
             let aacDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false, audioQueue: rtspClient.getAudioQueue())
             aacDecoder.decodeAudio { audioBufferList, numPackets, packetDesc in
                 print("오디오 디코딩 완료!")
                 let audioBuffer = audioBufferList.mBuffers
                 let data = Data(bytes: audioBuffer.mData!, count: Int(audioBuffer.mDataByteSize))
-                
-                //pcmPlayer.playPCMData([UInt8](data))
-                self.pcmData.append([UInt8](data))
-                
-                if self.pcmData.count >= 50 {
-                    pcmPlayer.playPCMData(Array(self.pcmData[0..<50]))
-                    self.pcmData = Array(self.pcmData[50..<self.pcmData.count])
-                }
-                
-                
-//                let dumpFilePath = "/Users/yumi/Documents/audioDump/pcm_dump.pcm"
-//                //MakeDumpFile.dumpRTPPacket(self.pcmData, to: dumpFilePath)
-//                let fileURL = URL(fileURLWithPath: dumpFilePath)
-//                if !FileManager.default.fileExists(atPath: fileURL.path) {
-//                    FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
-//                }
-//                //            else {
-//                //                do {
-//                //                    try FileManager.default.removeItem(at: fileURL)
-//                //                } catch {
-//                //                    print("failed remove existing file")
-//                //                }
-//                //            }
-//                guard let fileHandle = try? FileHandle(forWritingTo: fileURL) else {
-//                    print("Failed to open file for writing")
-//                    return
-//                }
-//                let flatArray = self.pcmData.flatMap { $0 }
-//                //fileHandle.seekToEndOfFile()
-//                fileHandle.write(Data(flatArray))
-//                //fileHandle.write(data)
-//                fileHandle.closeFile()
-//                
-//                print("Dump saved at \(dumpFilePath)")
+
+                self.audioPcmQueue.enqueue([UInt8](data))
+                pcmPlayer.startPlayback()
             }
+            
         }
     }
     

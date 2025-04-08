@@ -22,7 +22,7 @@ class AudioDecoder {
     private var destinationFormat: AudioStreamBasicDescription
     
     private let audioQueue: ThreadSafeQueue<Data>
-    private let audioSemaphore = DispatchSemaphore(value: 1)
+    //private let audioSemaphore = DispatchSemaphore(value: 1)
     
     init(formatID: AudioFormatID, useHardwareDecode: Bool, audioQueue: ThreadSafeQueue<Data>) {
         //print("init Decoder")
@@ -39,9 +39,9 @@ class AudioDecoder {
     // MARK: Public Functions
     //func decodeAudio(sourceBuffer: UnsafeMutableRawPointer, sourceBufferSize: UInt32, completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
     func decodeAudio(completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.audioSemaphore.wait()
-            print("decodeAudio decode Semaphore wait")
+        DispatchQueue.global(qos: .userInteractive).async {
+            //self.audioSemaphore.wait()
+            //print("decodeAudio decode Semaphore wait")
             while true {
                 if let audioData = self.audioQueue.dequeue() {
                     let sourceData: [UInt8] = [UInt8](audioData)
@@ -59,8 +59,8 @@ class AudioDecoder {
                     print("sourceBuffer.deallocate()")
                 }
             }
-            self.audioSemaphore.signal()
-            print("decodeAudio decode Semaphore signal")
+            //self.audioSemaphore.signal()
+            //print("decodeAudio decode Semaphore signal")
         }
     }
     
@@ -130,8 +130,8 @@ class AudioDecoder {
         
         guard let audioClassDesc = getAudioClassDescription(type: formatID, manufacturer: kAppleSoftwareAudioCodecManufacturer) else {
             print("configureDecoder audioClassDesc failed")
-            self.audioSemaphore.signal()
-            print("decodeAudio decode Semaphore signal")
+            //self.audioSemaphore.signal()
+            //print("decodeAudio decode Semaphore signal")
             return nil
         }
         
@@ -141,8 +141,8 @@ class AudioDecoder {
         
         if status != noErr {
             print("Audio Converter creation failed")
-            self.audioSemaphore.signal()
-            print("decodeAudio decode Semaphore signal")
+            //self.audioSemaphore.signal()
+            //print("decodeAudio decode Semaphore signal")
             return nil
         }
         
@@ -153,8 +153,8 @@ class AudioDecoder {
     private func decodeFormat(converter: AudioConverterRef?, sourceBuffer: UnsafeMutableRawPointer, sourceBufferSize: UInt32, sourceFormat: AudioStreamBasicDescription, destFormat: AudioStreamBasicDescription, completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
         //print("decodeFormat() called")
         guard let converter = converter else { print("converter is nil")
-            self.audioSemaphore.signal()
-            print("decodeAudio decode Semaphore signal")
+            //self.audioSemaphore.signal()
+            //print("decodeAudio decode Semaphore signal")
             return }
         
         let ioOutputDataPackets: UInt32 = 1024 // 변환 예정인 패킷 수(AAC는 1024 고정)
@@ -203,8 +203,8 @@ class AudioDecoder {
 
         if status != noErr {
             print("AudioConverterFillComplexBuffer failed: \(status)")
-            self.audioSemaphore.signal()
-            print("decodeAudio decode Semaphore signal")
+            //self.audioSemaphore.signal()
+            //print("decodeAudio decode Semaphore signal")
             return
         }
         
@@ -233,20 +233,20 @@ class AudioDecoder {
         
         if bufferList.mNumberBuffers != 1 {
             print("⚠️ Warning: Unexpected number of buffers!")
-            self.audioSemaphore.signal()
-            print("decodeAudio decode Semaphore signal")
+            //self.audioSemaphore.signal()
+            //print("decodeAudio decode Semaphore signal")
         }
         
         if buffer.mNumberChannels != expectedFormat.mChannelsPerFrame {
             print("❌ Channel count mismatch! Expected: \(expectedFormat.mChannelsPerFrame), Got: \(buffer.mNumberChannels)")
-            self.audioSemaphore.signal()
-            print("decodeAudio decode Semaphore signal")
+            //self.audioSemaphore.signal()
+            //print("decodeAudio decode Semaphore signal")
         }
         
         if buffer.mDataByteSize == 0 || buffer.mData == nil {
             print("❌ No audio data found!")
-            self.audioSemaphore.signal()
-            print("decodeAudio decode Semaphore signal")
+            //self.audioSemaphore.signal()
+            //print("decodeAudio decode Semaphore signal")
         } else {
             print("✅ Audio data is present")
         }
@@ -325,8 +325,8 @@ class AudioDecoder {
         
         if status != noErr || propertyDataSize == 0 {
             print("Failed to get audio decoder info. status: \(status), size: \(propertyDataSize)")
-            self.audioSemaphore.signal()
-            print("decodeAudio decode Semaphore signal")
+            //self.audioSemaphore.signal()
+            //print("decodeAudio decode Semaphore signal")
             return nil
         }
         //print("propertyDataSize: \(propertyDataSize)")
@@ -338,8 +338,8 @@ class AudioDecoder {
         
         if status2 != noErr {
             print("Failed to get audio decoder property")
-            self.audioSemaphore.signal()
-            print("decodeAudio decode Semaphore signal")
+            //self.audioSemaphore.signal()
+            //print("decodeAudio decode Semaphore signal")
             return nil
         }
         

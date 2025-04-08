@@ -22,7 +22,7 @@ class H264Decoder {
     private var lastPTS = CMTime(value: 0, timescale: 30000)
     
     private let videoQueue: ThreadSafeQueue<Data>
-    private let videoSemaphore = DispatchSemaphore(value: 1)
+    //private let videoSemaphore = DispatchSemaphore(value: 1)
     
     var delegate: H264DecoderDelegate?
     
@@ -48,8 +48,8 @@ class H264Decoder {
             // -12633: kVTInvalidImageBufferErr 이미지 버퍼가 유효하지 않음
             if let refCon = decompressionOutputRefCon {
                 let decoder = Unmanaged<H264Decoder>.fromOpaque(refCon).takeUnretainedValue()
-                decoder.videoSemaphore.signal()  //디코딩 실패 시 다음 루프로 이동
-                print("H264Decoder decode Semaphore signal")
+                //decoder.videoSemaphore.signal()  //디코딩 실패 시 다음 루프로 이동
+                //print("H264Decoder decode Semaphore signal")
             }
             return
         }
@@ -74,9 +74,9 @@ class H264Decoder {
     //func decode(nalData: Data) {
     func decode() {
         print("H264Decoder class started. decode()")
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.videoSemaphore.wait()
-            print("H264Decoder decode Semaphore wait")
+        DispatchQueue.global(qos: .userInteractive).async {
+            //self.videoSemaphore.wait()
+            //print("H264Decoder decode Semaphore wait")
             
             while true {
                 if let videoData = self.videoQueue.dequeue() {
@@ -90,8 +90,8 @@ class H264Decoder {
                     usleep(10_000)
                 }
             }
-            self.videoSemaphore.signal()
-            print("H264Decoder decode Semaphore signal")
+            //self.videoSemaphore.signal()
+            //print("H264Decoder decode Semaphore signal")
         }
         
         /*
@@ -156,8 +156,8 @@ class H264Decoder {
         }
         guard status == noErr, let formatDescription = formatDescription else {
             print("CMVideoFormatDescription Create Failed: \(status)")
-            self.videoSemaphore.signal()
-            print("H264Decoder decode Semaphore signal")
+            //self.videoSemaphore.signal()
+            //print("H264Decoder decode Semaphore signal")
             return
         }
         
@@ -280,8 +280,8 @@ class H264Decoder {
         
         if decompressionSession == nil {
             print("decompressionSession이 생성되지 않았습니다.")
-            self.videoSemaphore.signal()
-            print("H264Decoder decode Semaphore signal")
+            //self.videoSemaphore.signal()
+            //print("H264Decoder decode Semaphore signal")
         } else {
             print("decompressionSession 생성 완료: \(String(describing: decompressionSession))")
             if let session = decompressionSession {
@@ -291,8 +291,8 @@ class H264Decoder {
         
         if statusSession != noErr {
             print("VTDecompressionSession 생성 실패: \(statusSession)")
-            self.videoSemaphore.signal()
-            print("H264Decoder decode Semaphore signal")
+            //self.videoSemaphore.signal()
+            //print("H264Decoder decode Semaphore signal")
         } else {
             print("VTDecompressionSession 생성 성공 \(statusSession)")
         }
@@ -304,8 +304,8 @@ class H264Decoder {
         guard let decompressionSession = self.decompressionSession,
               let formatDescription = self.formatDescription else {
             print("decompressionSession이 설정되지 않음")
-            self.videoSemaphore.signal()
-            print("H264Decoder decode Semaphore signal")
+            //self.videoSemaphore.signal()
+            //print("H264Decoder decode Semaphore signal")
             return
         }
         
@@ -340,8 +340,8 @@ class H264Decoder {
         
         guard statusBB == kCMBlockBufferNoErr, let blockBuffer = blockBuffer else {
             print("CMBlockBuffer 생성 실패: \(statusBB), \(String(describing: blockBuffer))")
-            self.videoSemaphore.signal()
-            print("H264Decoder decode Semaphore signal")
+            //self.videoSemaphore.signal()
+            //print("H264Decoder decode Semaphore signal")
             return
         }
         print("CMBlockBuffer 생성 성공: \(statusBB), \(String(describing: blockBuffer))")
@@ -374,8 +374,8 @@ class H264Decoder {
         
         guard statusSB == noErr, let sampleBuffer = sampleBuffer else {
             print("CMSampleBuffer 생성 실패: \(statusSB), \(String(describing: sampleBuffer))")
-            self.videoSemaphore.signal()
-            print("H264Decoder decode Semaphore signal")
+            //self.videoSemaphore.signal()
+            //print("H264Decoder decode Semaphore signal")
             return
         }
         print("CMSampleBuffer 생성 성공: \(statusSB), \(String(describing: sampleBuffer))")
@@ -398,8 +398,8 @@ class H264Decoder {
         
         if statusDecode != noErr {
             print("decoding error: \(statusDecode)")
-            self.videoSemaphore.signal()
-            print("H264Decoder decode Semaphore signal")
+            //self.videoSemaphore.signal()
+            //print("H264Decoder decode Semaphore signal")
         }
         
         frameIndex += 1

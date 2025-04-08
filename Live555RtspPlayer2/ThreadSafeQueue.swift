@@ -30,4 +30,26 @@ final class ThreadSafeQueue<T> {
         lock.signal()
         return result
     }
+    
+    func dequeue(batchSize: Int) -> [T] {
+        lock.wait()
+        let count = min(batchSize, queue.count)
+        let batch = Array(queue.prefix(count))
+        queue.removeFirst(count)
+        lock.signal()
+        return batch
+    }
+    
+    func count() -> Int {
+        lock.wait()
+        let result = queue.count
+        lock.signal()
+        return result
+    }
+    
+    func printQueue() {
+        lock.wait()
+        print(queue)
+        lock.signal()
+    }
 }

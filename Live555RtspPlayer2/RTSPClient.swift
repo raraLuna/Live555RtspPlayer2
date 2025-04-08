@@ -120,7 +120,7 @@ class RTSPClient {
     
     private let videoQueue = ThreadSafeQueue<Data>()
     private let audioQueue = ThreadSafeQueue<Data>()
-    private let semaphore = DispatchSemaphore(value: 1)
+    //private let semaphore = DispatchSemaphore(value: 1)
     
     private var sps: [UInt8] = []
     private var pps: [UInt8] = []
@@ -140,7 +140,7 @@ class RTSPClient {
     private var isRunning = false
     //private let audioDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false)
     //private let h264Decoder = H264Decoder()
-    private let pcmPlayer = PCMPlayer()
+    //private let pcmPlayer = PCMPlayer()
     private let audioPlayer = AudioPlayer()
     private let convertYUVToRGB = YUVNV12toRGB()
     
@@ -331,8 +331,8 @@ extension RTSPClient {
             self.isRunning = true
             
             while self.isRunning {
-                self.semaphore.wait()
-                print("startReceivingData Semaphore wait")
+                //self.semaphore.wait()
+                //print("startReceivingData Semaphore wait")
                 // 1byte 만큼 데이터 읽기
                 var oneByteBuffer = [UInt8](repeating: 0, count: 1)
                 var threeByteBuffer = [UInt8](repeating: 0, count: 3)
@@ -363,15 +363,15 @@ extension RTSPClient {
                         print("Received Data: \(bytesRead) bytes")
                     } else {
                         print("Failed to read data")
-                        self.semaphore.signal()
-                        print("startReceivingData Semaphore signal")
+                        //self.semaphore.signal()
+                        //print("startReceivingData Semaphore signal")
                     }
                     
                     //print("RTP buffer : \(rtpBuffer)")
                     guard !rtpBuffer.isEmpty else {
                         print("RTP buffer is empty")
-                        self.semaphore.signal()
-                        print("startReceivingData Semaphore signal")
+                        //self.semaphore.signal()
+                        //print("startReceivingData Semaphore signal")
                         return
                     }
                     
@@ -396,17 +396,17 @@ extension RTSPClient {
                     } else if payloadType == 0 || payloadType == 8  {
                         print("Audio RTP Packet detected")
                         self.parseAudio(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
-                        self.semaphore.signal()
-                        print("startReceivingData Semaphore signal")
+                        //self.semaphore.signal()
+                        //print("startReceivingData Semaphore signal")
                     } else if payloadType == 96 || payloadType == 97 {
                         print("Video RTP Packet detected")
                         self.parseVideo(rtpHeader: rtpHeader, rtpPacket: rtpPacket, sdpInfo: sdpInfo)
-                        self.semaphore.signal()
-                        print("startReceivingData Semaphore signal")
+                        //self.semaphore.signal()
+                        //print("startReceivingData Semaphore signal")
                     } else {
                         print("Unknown RTP Packet detected")
-                        self.semaphore.signal()
-                        print("startReceivingData Semaphore signal")
+                        //self.semaphore.signal()
+                        //print("startReceivingData Semaphore signal")
                     }
                     
                     
@@ -428,8 +428,8 @@ extension RTSPClient {
                            
                         }
                     }
-                    self.semaphore.signal()
-                    print("startReceivingData Semaphore signal")
+                    //self.semaphore.signal()
+                    //print("startReceivingData Semaphore signal")
                     continue
                 }
             }
@@ -522,15 +522,15 @@ extension RTSPClient {
                         unitData = Data(nalUnit[nalDataIndex - 4..<nalUnit.count])
                         self.videoQueue.enqueue(unitData)
                         print("videoQueue enqueue 1")
-                        self.semaphore.signal()
-                        print("startReceivingData Semaphore signal")
+                        //self.semaphore.signal()
+                        //print("startReceivingData Semaphore signal")
                         //h264Decoder.decode(nalData: Data(nalUnit[nalDataIndex - 4..<nalUnit.count]))
                     } else {
                         unitData = Data(nalUnit)
                         self.videoQueue.enqueue(unitData)
                         print("videoQueue enqueue 2")
-                        self.semaphore.signal()
-                        print("startReceivingData Semaphore signal")
+                        //self.semaphore.signal()
+                        //print("startReceivingData Semaphore signal")
                         //h264Decoder.decode(nalData: Data(nalUnit))
                     }
                     //h264Decoder.delegate = convertYUVToRGB
@@ -554,8 +554,8 @@ extension RTSPClient {
                     //
                     //                    }
                 } else {
-                    self.semaphore.signal()
-                    print("startReceivingData Semaphore signal")
+                    //self.semaphore.signal()
+                    //print("startReceivingData Semaphore signal")
                 }
                 
             }
@@ -754,8 +754,8 @@ extension RTSPClient {
             
             
             */
-            self.semaphore.signal()
-            print("startReceivingData Semaphore signal")
+            //self.semaphore.signal()
+            //print("startReceivingData Semaphore signal")
     
         
     }

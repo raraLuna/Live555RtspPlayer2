@@ -11,12 +11,15 @@ import AVFoundation
 class PCMPlayer {
     private lazy var audioEngine = AVAudioEngine()
     private var playerNode = AVAudioPlayerNode()
+    private let audioPcmQueue: ThreadSafeQueue<[UInt8]>
+    private var timer: DispatchSourceTimer?
+    private var isPlaying = false
     
-    //func playPCMData(_ byteArrays: [[UInt8]]) {
-    func playPCMData(_ byteArrays: [[UInt8]]) {
-        self.audioEngine = AVAudioEngine()
-        self.playerNode = AVAudioPlayerNode()
-        
+    init(audioPcmQueue: ThreadSafeQueue<[UInt8]>) {
+        self.audioPcmQueue = audioPcmQueue
+    }
+    
+    func startPlayback() {
         self.audioEngine.attach(self.playerNode)
         
         //inputFormat
@@ -36,65 +39,50 @@ class PCMPlayer {
         //print("[PCMPlayer] Audio Player Node connected to AudioEngine with format")
         
         do {
-            try self.audioEngine.start()
-            
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
+            try self.audioEngine.start()
+            print("[PCMPlayer] audioEngine.start()")
             
-            for byteArray in byteArrays {
-                guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: UInt32(byteArray.count) / 2) else {
-                    print("[PCMPlayer] Failed to create input AVAudioPCMBuffer")
-                    return
-                }
-                //print("[PCMPlayer] frameCapacity AVAudioFrameCount(byteArray.count) : \(AVAudioFrameCount(byteArray.count))")
-                //print("[PCMPlayer] inputFormat.streamDescription.pointee.mBytesPerFrame: \(inputFormat.streamDescription.pointee.mBytesPerFrame)")
-                
-                let frameCount = UInt32(byteArray.count) / 2
-                inputBuffer.frameLength = frameCount
-
-                byteArray.withUnsafeBytes { rawBufferPointer in
-                    let audioBuffer = inputBuffer.int16ChannelData![0]
-                    memcpy(audioBuffer, rawBufferPointer.baseAddress!, byteArray.count)
-                }
-
-                
-                guard let outputBuffer = convertBuffer(inputFormat: inputFormat, inputBuffer: inputBuffer, outputFormat: outputFormat) else {
-                    print("[PCMPlayer] Failed to create output AVAudioPCMBuffer")
-                    return
-                }
-                //print("[PCMPlayer] success to create output PCM Buffer")
-                //print("[PCMPlayer] output PCM Buffer.format: \(outputBuffer.format)")
-                //print("[PCMPlayer] outputBuffer.frameCapacity: \(outputBuffer.frameCapacity)")
-                
-                outputBuffer.frameLength = outputBuffer.frameCapacity
-                
-                self.playerNode.scheduleBuffer(outputBuffer, completionHandler: nil)
-
-                if !self.playerNode.isPlaying {
-                    self.playerNode.play()
-                }
-                
-            }
+            self.playerNode.play()  
+            print("[PCMPlayer] playerNode.play()")
             
         } catch {
             print("[PCMPlayer] Error starting audio engine: \(error.localizedDescription)")
+            return
         }
         
-//        if self.audioEngine.isRunning {
-//            self.playerNode.play()
-//            print("[PCMPlayer] Player Node play audio start")
-//            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-//                self.playerNode.stop()
-//                self.playerNode.reset()
-//                print("[PCMPlayer] Player node stop and reset")
-//                
-//                self.audioEngine.stop()
-//                self.audioEngine.reset()
-//                print("[PCMPlayer] Audio Engine stop and reset")
-//            }
-//        } else {
-//            print("[PCMPlayer] Audio Engine is not running")
-//        }
+        timer = DispatchSource.makeTimerSource()
+        timer?.schedule(deadline: .now(), repeating: 0.02) // 20ms 주기
+        timer?.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            self.feedBuffer(inputFormat: inputFormat, outputFormat: outputFormat)
+        }
+        timer?.resume()
+        isPlaying = true
+        print("[PCMPlayer] Timer started")
+    }
+    
+    func feedBuffer(inputFormat: AVAudioFormat, outputFormat: AVAudioFormat) {
+        guard let byteArray = audioPcmQueue.dequeue() else { return }
+        
+        guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: UInt32(byteArray.count / 2)) else { return }
+        
+        inputBuffer.frameLength = inputBuffer.frameCapacity
+        
+        byteArray.withUnsafeBytes { rawBufferPointer in
+            let audioBuffer = inputBuffer.int16ChannelData![0]
+            memcpy(audioBuffer, rawBufferPointer.baseAddress!, byteArray.count)
+        }
+        
+        guard let outputBuffer = convertBuffer(inputFormat: inputFormat, inputBuffer: inputBuffer, outputFormat: outputFormat) else {
+            print("[PCMPlayer] Failed to create output AVAudioPCMBuffer")
+            return
+        }
+        outputBuffer.frameLength = outputBuffer.frameCapacity
+        playerNode.scheduleBuffer(outputBuffer, completionHandler: nil)
+        print("[PCMPlayer] playerNode prepared to play audio")
+        
     }
     
     func convertBuffer(inputFormat: AVAudioFormat, inputBuffer: AVAudioPCMBuffer, outputFormat: AVAudioFormat) -> AVAudioPCMBuffer? {
@@ -122,6 +110,14 @@ class PCMPlayer {
             return nil
         }
         return outputBuffer
+    }
+    
+    func stopPlayback() {
+        timer?.cancel()
+        playerNode.stop()
+        audioEngine.stop()
+        isPlaying = false
+        print("[PCMPlayer] Stopped playback")
     }
 }
 
