@@ -33,6 +33,8 @@ class ViewController: UIViewController {
     var rtspSession: String = ""
     
     private var rtspClient: RTSPClient?
+    private var h264Decoder: H264Decoder?
+    private var aacDecoder: AudioDecoder?
     private var isRunning = false
     private var pcmData: [[UInt8]] = []
     
@@ -222,10 +224,17 @@ class ViewController: UIViewController {
     
     @IBAction func stopRtsp(_ sender: Any) {
         DispatchQueue.global(qos: .background).async {
+            print("[Thread] stopRtsp thread: \(Thread.current)")
             guard let rtspClient = self.rtspClient, self.isRunning else {
                 return
             }
             self.isRunning = false
+            
+            self.h264Decoder?.stop()
+            self.h264Decoder = nil
+            
+            self.aacDecoder?.stop()
+            self.aacDecoder = nil
             
             rtspClient.stopReceivingData()
             
@@ -244,6 +253,7 @@ class ViewController: UIViewController {
     
     private func startRTSP() {
         DispatchQueue.global(qos: .background).async {
+            print("[Thread] startRTSP thread: \(Thread.current)")
             //let rtspClient = RTSPClient(serverAddress: self.urlHost, serverPort: UInt16(self.urlPort), serverPath: self.urlPath, url: self.url)
             self.rtspClient = RTSPClient(serverAddress: self.urlHost, serverPort: UInt16(self.urlPort), serverPath: self.urlPath, url: self.url)
             
@@ -348,14 +358,15 @@ class ViewController: UIViewController {
 
             rtspClient.startReceivingData(sdpInfo: sdpInfo)
 
-            let h264Decoder = H264Decoder(videoQueue: rtspClient.getVideoQueue())
+            self.h264Decoder = H264Decoder(videoQueue: rtspClient.getVideoQueue())
 
-            h264Decoder.delegate = self.metalRender
-            h264Decoder.decode()
+            self.h264Decoder?.delegate = self.metalRender
+            //h264Decoder.decode()
+            self.h264Decoder?.start()
             
             let pcmPlayer = PCMPlayer(audioPcmQueue: self.audioPcmQueue)
-            let aacDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false, audioQueue: rtspClient.getAudioQueue())
-            aacDecoder.decodeAudio { audioBufferList, numPackets, packetDesc in
+            self.aacDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false, audioQueue: rtspClient.getAudioQueue())
+            self.aacDecoder?.start { audioBufferList, numPackets, packetDesc in
                 print("오디오 디코딩 완료!")
                 let audioBuffer = audioBufferList.mBuffers
                 let data = Data(bytes: audioBuffer.mData!, count: Int(audioBuffer.mDataByteSize))

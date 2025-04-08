@@ -25,6 +25,9 @@ class H264Decoder {
     
     var delegate: H264DecoderDelegate?
     
+    private var isDecoding = false
+    private var decodeThread: Thread?
+    
     private let decompressionOutputCallback: VTDecompressionOutputCallback = { (
         decompressionOutputRefCon,
         sourceFrameRefCon,
@@ -66,12 +69,32 @@ class H264Decoder {
         self.videoQueue = videoQueue
     }
     
+    deinit {
+        invalidateSession()
+    }
+
+    func start() {
+        isDecoding = true
+        DispatchQueue.global(qos: .userInteractive).async {
+            self.decode()
+        }
+    }
+    
+    func stop() {
+        isDecoding = false
+        VTDecompressionSessionInvalidate(self.decompressionSession!)
+        self.decompressionSession = nil
+        self.formatDescription = nil
+        self.frameIndex = 0
+        print("H264Decoder stopped and resources released.")
+    }
+    
     // H.264 NAL Unit 처리 함수
     func decode() {
         print("H264Decoder class started. decode()")
-        DispatchQueue.global(qos: .userInteractive).async {
-            
-            while true {
+        //DispatchQueue.global(qos: .userInteractive).async {
+            print("[Thread] devode h264 thread: \(Thread.current)")
+            while isDecoding {
                 if let videoData = self.videoQueue.dequeue() {
                     let spsInfo = videoDecodingInfo.sps
                     let ppsInfo = videoDecodingInfo.pps
@@ -81,7 +104,7 @@ class H264Decoder {
                     usleep(10_000)
                 }
             }
-        }
+        //}
     }
     
     // Decompression: 감압. 압축 해제
@@ -281,5 +304,13 @@ class H264Decoder {
         } else {
             return lastPTS + CMTime(value: 1001, timescale: 30000)
         }
+    }
+    
+    func invalidateSession() {
+        if let session = decompressionSession {
+            VTDecompressionSessionInvalidate(session)
+            decompressionSession = nil
+        }
+        formatDescription = nil
     }
 }

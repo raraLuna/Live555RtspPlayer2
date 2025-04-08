@@ -327,6 +327,7 @@ extension RTSPClient {
     
     func startReceivingData(sdpInfo: SdpInfo) {
         DispatchQueue.global(qos: .userInitiated).async {
+            print("[Thread] startReceivingData thread: \(Thread.current)")
             self.isRunning = true
             
             while self.isRunning {

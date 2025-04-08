@@ -24,6 +24,8 @@ class AudioDecoder {
     private let audioQueue: ThreadSafeQueue<Data>
     //private let audioSemaphore = DispatchSemaphore(value: 1)
     
+    private var isDecoding = false
+    
     init(formatID: AudioFormatID, useHardwareDecode: Bool, audioQueue: ThreadSafeQueue<Data>) {
         //print("init Decoder")
         self.sourceFormat = AudioStreamBasicDescription()
@@ -36,10 +38,22 @@ class AudioDecoder {
         freeDecoder()
     }
     
+    func start(completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
+        isDecoding = true
+        DispatchQueue.global(qos: .userInteractive).async {
+            self.decodeAudio(completion: completion)
+        }
+    }
+    
+    func stop() {
+        isDecoding = false
+    }
+    
     // MARK: Public Functions
     func decodeAudio(completion: @escaping (AudioBufferList, UInt32, AudioStreamPacketDescription?) -> Void) {
-        DispatchQueue.global(qos: .userInteractive).async {
-            while true {
+        //DispatchQueue.global(qos: .userInteractive).async {
+            print("[Thread] decodeAudio thread: \(Thread.current)")
+            while isDecoding {
                 if let audioData = self.audioQueue.dequeue() {
                     let sourceData: [UInt8] = [UInt8](audioData)
                     let sourceBufferSize = UInt32(sourceData.count)
@@ -56,7 +70,7 @@ class AudioDecoder {
                     print("sourceBuffer.deallocate()")
                 }
             }
-        }
+        //}
     }
     
     func freeDecoder() {
