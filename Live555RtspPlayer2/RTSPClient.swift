@@ -69,8 +69,10 @@ struct RtpHeader {
 }
 
 struct videoDecodingInfo {
+    static var codec: Int = 0
     static var sps: Data = Data()
     static var pps: Data = Data()
+    static var vps: Data = Data()
 }
 
 class Track {
@@ -82,6 +84,7 @@ class VideoTrack: Track {
     var videoCodec: Int = 0
     var sps: Data?
     var pps: Data?
+    var vps: Data? // H.265의 경우
 }
 
 class AudioTrack: Track {
@@ -494,10 +497,50 @@ extension RTSPClient {
             }
         } else if self.encodeType == "h265" {
             let rtpH265Parser = RtpH265Parser()
+            var readyDecode = false
+            
             if rtpPacket.count != 0 {
                 let nalUnit = rtpH265Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
                 if nalUnit.count != 0 {
-                    print("rtpH265Parser result nalUnit: \(nalUnit)")
+                    //print("rtpH265Parser result nalUnit: \(nalUnit)")
+                    let header = nalUnit[4]
+                    let nalUnitType = (header >> 1) & 0x3F
+                    print("rtpH265 nalUnitType: \(nalUnitType)")
+                    
+                    if !videoDecodingInfo.vps.isEmpty &&
+                       !videoDecodingInfo.sps.isEmpty &&
+                        !videoDecodingInfo.pps.isEmpty {
+                        readyDecode = true
+                    }
+                    
+                    switch nalUnitType {
+                    case 32:
+                        videoDecodingInfo.vps = Data(nalUnit.dropFirst(4))
+                    case 33:
+                        videoDecodingInfo.sps = Data(nalUnit.dropFirst(4))
+                    case 34:
+                        videoDecodingInfo.pps = Data(nalUnit.dropFirst(4))
+                    case 19, 20:
+                        if readyDecode == true {
+                            let unitData = Data(nalUnit)
+                            self.videoQueue.enqueue(unitData)
+                            print("videoQueue enqueue 1")
+                            print("self.videoQueue.count(): \(self.videoQueue.count())")
+                        } else {
+                            break;
+                        }
+                    case 0, 1, 6:
+                        print("self.videoQueue.count(): \(self.videoQueue.count())")
+                        if self.videoQueue.count() > 0 {
+                            let unitData = Data(nalUnit)
+                            self.videoQueue.enqueue(unitData)
+                            print("videoQueue enqueue 2")
+                        } else {
+                            break;
+                        }
+                    default:
+                        break;
+                    }
                 }
             }
         }
@@ -727,8 +770,10 @@ extension RTSPClient {
                             switch codecDetails[0].lowercased() {
                             case "h264":
                                 videoTrack.videoCodec = Codec.VIDEO_CODEC_H264
+                                videoDecodingInfo.codec = Codec.VIDEO_CODEC_H264
                             case "h265":
                                 videoTrack.videoCodec = Codec.VIDEO_CODEC_H265
+                                videoDecodingInfo.codec = Codec.VIDEO_CODEC_H265
                             default:
                                 print("Unknown video codec \(codecDetails[0])")
                             }
@@ -766,29 +811,64 @@ extension RTSPClient {
         guard let params = getSdpParams(param: param) else {
             return
         }
-        
-        for param in params {
-            if param.0.lowercased() == "sprop-parameter-sets" {
-                let paramsSpsPps = param.1.split(separator: ",")
-                if paramsSpsPps.count > 1 {
-                    // Decoding Base64
-                    guard let sps = Data(base64Encoded: String(paramsSpsPps[0])),
-                          let pps = Data(base64Encoded: String(paramsSpsPps[1])) else {
-                        print("Failed to decode Base64 for SPS/PPS")
+        print("sdp params: \(params)")
+        print("videoTrack format: \(videoTrack.videoCodec)")
+        let videoCodec = videoTrack.videoCodec
+        if videoCodec == 0 {
+            for param in params {
+                if param.0.lowercased() == "sprop-parameter-sets" {
+                    let paramsSpsPps = param.1.split(separator: ",")
+                    if paramsSpsPps.count > 1 {
+                        // Decoding Base64
+                        guard let sps = Data(base64Encoded: String(paramsSpsPps[0])),
+                              let pps = Data(base64Encoded: String(paramsSpsPps[1])) else {
+                            print("Failed to decode Base64 for SPS/PPS")
+                            return
+                        }
+                        
+                        // Add NAL Unit header
+                        var nalSps = Data([0x00, 0x00, 0x00, 0x01]) // 00 00 00 01
+                        //var nalSps = Data()
+                        nalSps.append(sps)
+                        
+                        var nalPps = Data([0x00, 0x00, 0x00, 0x01]) // 00 00 00 01
+                        //var nalPps = Data()
+                        nalPps.append(pps)
+                        
+                        // Setting VideoTrack
+                        videoTrack.sps = nalSps
+                        videoTrack.pps = nalPps
+                    }
+                }
+            }
+        } else if videoCodec == 1 {
+            for param in params {
+                if param.0.lowercased() == "sprop-vps" {
+                    let paramsVps = param.1
+                    guard let vps = Data(base64Encoded: String(paramsVps)) else {
+                        print("Failed to decode Base64 for VPS")
                         return
                     }
-                    
-                    // Add NAL Unit header
-                    var nalSps = Data([0x00, 0x00, 0x00, 0x01]) // 00 00 00 01
-                    //var nalSps = Data()
+                    var nalVps = Data([0x00, 0x00, 0x00, 0x01])
+                    nalVps.append(vps)
+                    videoTrack.vps = nalVps
+                } else if param.0.lowercased() == "sprop-sps" {
+                    let paramsSps = param.1
+                    guard let sps = Data(base64Encoded: String(paramsSps)) else {
+                        print("Failed to decode Base64 for VPS")
+                        return
+                    }
+                    var nalSps = Data([0x00, 0x00, 0x00, 0x01])
                     nalSps.append(sps)
-                    
-                    var nalPps = Data([0x00, 0x00, 0x00, 0x01]) // 00 00 00 01
-                    //var nalPps = Data()
-                    nalPps.append(pps)
-                    
-                    // Setting VideoTrack
                     videoTrack.sps = nalSps
+                } else if param.0.lowercased() == "sprop-pps" {
+                    let paramsPps = param.1
+                    guard let pps = Data(base64Encoded: String(paramsPps)) else {
+                        print("Failed to decode Base64 for VPS")
+                        return
+                    }
+                    var nalPps = Data([0x00, 0x00, 0x00, 0x01])
+                    nalPps.append(pps)
                     videoTrack.pps = nalPps
                 }
             }

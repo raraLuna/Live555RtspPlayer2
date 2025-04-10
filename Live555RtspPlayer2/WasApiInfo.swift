@@ -9,6 +9,7 @@ import Foundation
 
 struct WasApiInfo {
     static let URL_WAS_USA_DEV                              = "https://wasdev-usa.remobell.com:8443/HT/WAS"
+    static let URL_WAS_USA_KOR                              = "https://wasdev-kor.remobell.com:8443/HT/WAS"
     static let URL_WAS_USA                                  = "https://was-usa.remobell.com:8443/HT/WAS"
     
     static let URL_WAS_MEM_LOGIN                            = "/inf/memInfo/memLogin.json"

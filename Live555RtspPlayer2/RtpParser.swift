@@ -15,7 +15,7 @@ class RtpParser {
     
     // TODO: 미리 할당된 버퍼 사용 (RtpPacket.MAX_SIZE = 65507)
     // 단편화 된 패킷을 저장하는 버퍼
-    static var fragmentedBuffer: [[UInt8]?] = Array(repeating: nil, count: 1024)
+    static var fragmentedBuffer: [[UInt8]?] = Array(repeating: nil, count: 2048)
     static var fragmentedBufferLength: Int = 0
     static var fragmentedPackets: Int = 0
     

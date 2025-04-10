@@ -34,6 +34,7 @@ class ViewController: UIViewController {
     
     private var rtspClient: RTSPClient?
     private var h264Decoder: H264Decoder?
+    private var h265Decoder: H265Decoder?
     private var aacDecoder: AudioDecoder?
     private var isRunning = false
     private var pcmData: [[UInt8]] = []
@@ -46,28 +47,26 @@ class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
-        //let rtspUrl = "rtsp://192.168.0.50:554/test.264"
-        //let rtspUrl = "rtsp://192.168.0.139:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
-        //let rtspUrl = "rtsp://169.254.53.31:554/TheSimpsonsMovie_1080x800_h264_AAC.mkv"
-        //let rtspUrl = "rtsp://192.168.0.50:554/TheSimpsonsMovie_1080x800_h265_AAC.mkv"
+        //let rtspUrl = "rtsp://192.168.0.69:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
+        let rtspUrl = "rtsp://192.168.0.69:554/test.265"
         
-        
-//        guard let components = URLComponents(string: rtspUrl) else {
-//            print("Failed to parse RTSP URL")
-//            return
-//        }
-//        guard let host = components.host, let port = components.port else {
-//            print("Failed to get host or port")
-//            return
-//        }
-//        let filePath = components.path
-//
-//        self.urlHost = host
-//        self.urlPort = port
-//        self.urlPath = filePath
-//        self.url = "rtsp://\(urlHost):\(urlPort)\(urlPath)"
-//        //print("rtspConnect host: \(self.urlHost), port: \(self.urlPort), path: \(self.urlPath)")
-//        print("connect to url: \(self.url)")
+        self.loginBtn.isHidden = true
+        guard let components = URLComponents(string: rtspUrl) else {
+            print("Failed to parse RTSP URL")
+            return
+        }
+        guard let host = components.host, let port = components.port else {
+            print("Failed to get host or port")
+            return
+        }
+        let filePath = components.path
+
+        self.urlHost = host
+        self.urlPort = port
+        self.urlPath = filePath
+        self.url = "rtsp://\(urlHost):\(urlPort)\(urlPath)"
+        //print("rtspConnect host: \(self.urlHost), port: \(self.urlPort), path: \(self.urlPath)")
+        print("connect to url: \(self.url)")
         
         metalRender = MetalRender(view: self.imageView)
     }
@@ -301,6 +300,7 @@ class ViewController: UIViewController {
                 print("sdpInfo: \(sdpInfo)")
                 print("SPS: \([UInt8](sdpInfo.videoTrack?.sps ?? Data()))")
                 print("PPS: \([UInt8](sdpInfo.videoTrack?.pps ?? Data()))")
+                print("VPS: \([UInt8](sdpInfo.videoTrack?.vps ?? Data()))")
             }
             
             var sessionVideo = ""
@@ -358,11 +358,17 @@ class ViewController: UIViewController {
 
             rtspClient.startReceivingData(sdpInfo: sdpInfo)
 
-            self.h264Decoder = H264Decoder(videoQueue: rtspClient.getVideoQueue())
-
-            self.h264Decoder?.delegate = self.metalRender
-            //h264Decoder.decode()
-            self.h264Decoder?.start()
+            print("VideoTrack().videoCodec: \(videoDecodingInfo.codec)")
+            if videoDecodingInfo.codec == 0 {
+                self.h264Decoder = H264Decoder(videoQueue: rtspClient.getVideoQueue())
+                
+                self.h264Decoder?.delegate = self.metalRender
+                self.h264Decoder?.start()
+                
+            } else if videoDecodingInfo.codec == 1 {
+                self.h265Decoder = H265Decoder(videoQueue: rtspClient.getVideoQueue())
+                self.h265Decoder?.start()
+            }
             
             let pcmPlayer = PCMPlayer(audioPcmQueue: self.audioPcmQueue)
             self.aacDecoder = AudioDecoder(formatID: kAudioFormatMPEG4AAC, useHardwareDecode: false, audioQueue: rtspClient.getAudioQueue())
