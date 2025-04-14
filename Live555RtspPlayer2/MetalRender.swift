@@ -10,7 +10,7 @@ import AVFoundation
 import Metal
 import MetalKit
 
-class MetalRender: H264DecoderDelegate {
+class MetalRender: H264DecoderDelegate, H265DecoderDelegate {
     private var device: MTLDevice!
     private var commandQueue: MTLCommandQueue!
     private var pipelineState: MTLRenderPipelineState!

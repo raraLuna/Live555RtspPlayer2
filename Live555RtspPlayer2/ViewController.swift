@@ -48,6 +48,7 @@ class ViewController: UIViewController {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
         //let rtspUrl = "rtsp://192.168.0.69:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
+        //let rtspUrl = "rtsp://192.168.0.69:554/test.264"
         let rtspUrl = "rtsp://192.168.0.69:554/test.265"
         
         self.loginBtn.isHidden = true
@@ -229,8 +230,13 @@ class ViewController: UIViewController {
             }
             self.isRunning = false
             
-            self.h264Decoder?.stop()
-            self.h264Decoder = nil
+            if videoDecodingInfo.codec == 0 {
+                self.h264Decoder?.stop()
+                self.h264Decoder = nil
+            } else if videoDecodingInfo.codec == 1 {
+                self.h265Decoder?.stop()
+                self.h265Decoder = nil
+            }
             
             self.aacDecoder?.stop()
             self.aacDecoder = nil
@@ -367,6 +373,7 @@ class ViewController: UIViewController {
                 
             } else if videoDecodingInfo.codec == 1 {
                 self.h265Decoder = H265Decoder(videoQueue: rtspClient.getVideoQueue())
+                self.h265Decoder?.delegate = self.metalRender
                 self.h265Decoder?.start()
             }
             

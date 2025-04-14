@@ -509,7 +509,7 @@ extension RTSPClient {
                     
                     if !videoDecodingInfo.vps.isEmpty &&
                        !videoDecodingInfo.sps.isEmpty &&
-                        !videoDecodingInfo.pps.isEmpty {
+                       !videoDecodingInfo.pps.isEmpty {
                         readyDecode = true
                     }
                     
@@ -525,19 +525,14 @@ extension RTSPClient {
                             let unitData = Data(nalUnit)
                             self.videoQueue.enqueue(unitData)
                             print("videoQueue enqueue 1")
-                            print("self.videoQueue.count(): \(self.videoQueue.count())")
                         } else {
                             break;
                         }
                     case 0, 1, 6:
-                        print("self.videoQueue.count(): \(self.videoQueue.count())")
-                        if self.videoQueue.count() > 0 {
                             let unitData = Data(nalUnit)
                             self.videoQueue.enqueue(unitData)
                             print("videoQueue enqueue 2")
-                        } else {
                             break;
-                        }
                     default:
                         break;
                     }

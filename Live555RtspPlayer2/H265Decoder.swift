@@ -14,6 +14,10 @@ protocol H265DecoderDelegate: AnyObject {
 }
 
 class H265Decoder {
+    public static var defaultDecodeFlags: VTDecodeFrameFlags = [
+        ._EnableAsynchronousDecompression,
+        ._EnableTemporalProcessing
+    ]
     private var decompressionSession: VTDecompressionSession?
     private var formatDescription: CMFormatDescription?
     private var vps: Data?
@@ -28,6 +32,9 @@ class H265Decoder {
     weak var delegate: H265DecoderDelegate?
     
     private var isDecoding = false
+    private var flagIn: VTDecodeFrameFlags {
+        H265Decoder.defaultDecodeFlags
+    }
     
     private let decompressionOutputCallback: VTDecompressionOutputCallback = { (
         decompressionOutputRefCon,
@@ -47,14 +54,14 @@ class H265Decoder {
         let pixelBuffer = imageBuffer as CVPixelBuffer
         print("비디오 디코딩 완료 - CVPixelBuffer 얻음 \(pixelBuffer)")
         
-        let dumpFilePath = "/Users/yumi/Documents/videoDump/decoded265_frame.yuv"
-        MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
+//        let dumpFilePath = "/Users/yumi/Documents/videoDump/decoded265_frame.yuv"
+//        MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
         
-//        if let refCon = decompressionOutputRefCon {
-//            let decoder = Unmanaged<H264Decoder>.fromOpaque(refCon).takeUnretainedValue()
-//            print("decoder.delegate: \(String(describing: decoder.delegate))")
-//            decoder.delegate?.didDecodeFrame(pixelBuffer)
-//        }
+        if let refCon = decompressionOutputRefCon {
+            let decoder = Unmanaged<H265Decoder>.fromOpaque(refCon).takeUnretainedValue()
+            print("decoder.delegate: \(String(describing: decoder.delegate))")
+            decoder.delegate?.didDecodeFrame(pixelBuffer)
+        }
     }
     
     init(videoQueue: ThreadSafeQueue<Data>) {
@@ -80,7 +87,7 @@ class H265Decoder {
     
     private func decode() {
         print("H265Decoder class started. decode()")
-            print("[Thread] devode h265 thread: \(Thread.current)")
+            print("[Thread] decode h265 thread: \(Thread.current)")
         while isDecoding {
             if let videoData = self.videoQueue.dequeue() {
                 if !isDecoderInitialized {
@@ -150,6 +157,7 @@ class H265Decoder {
         )
         let decoderParameters = NSMutableDictionary()
         let attributes: [NSString: AnyObject] = [
+            //kCVPixelBufferPixelFormatTypeKey: NSNumber(value: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
             kCVPixelBufferIOSurfacePropertiesKey: NSDictionary(),
             kCVPixelBufferMetalCompatibilityKey: kCFBooleanTrue
         ]
@@ -247,12 +255,13 @@ class H265Decoder {
         print("CMSampleBuffer 생성 성공: \(statusSB), \(String(describing: sampleBuffer))")
         print("CMSampleBuffer totalSampleSize : \(sampleBuffer.totalSampleSize)")
         
+        var flagOut: VTDecodeInfoFlags = []
         let statusDecode = VTDecompressionSessionDecodeFrame(
             decompressionSession,
             sampleBuffer: sampleBuffer,
-            flags: [],
+            flags: flagIn,
             frameRefcon: nil,
-            infoFlagsOut: nil
+            infoFlagsOut: &flagOut
         )
         
         if statusDecode != noErr {
