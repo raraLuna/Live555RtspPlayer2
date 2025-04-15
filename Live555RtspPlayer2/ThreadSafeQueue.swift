@@ -31,15 +31,6 @@ final class ThreadSafeQueue<T> {
         return result
     }
     
-    func dequeue(batchSize: Int) -> [T] {
-        lock.wait()
-        let count = min(batchSize, queue.count)
-        let batch = Array(queue.prefix(count))
-        queue.removeFirst(count)
-        lock.signal()
-        return batch
-    }
-    
     func count() -> Int {
         lock.wait()
         let result = queue.count
@@ -51,5 +42,15 @@ final class ThreadSafeQueue<T> {
         lock.wait()
         print(queue)
         lock.signal()
+    }
+}
+
+extension ThreadSafeQueue where T == (data: Data, rtpTimestamp: UInt32, nalType: UInt8) {
+    func enqueuePacket(_ data: Data, timestamp: UInt32, nalType: UInt8) {
+        self.enqueue((data, timestamp, nalType))
+    }
+
+    func dequeuePacket() -> (data: Data, rtpTimestamp: UInt32, nalType: UInt8)? {
+        return self.dequeue()
     }
 }

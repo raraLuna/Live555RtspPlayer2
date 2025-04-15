@@ -121,7 +121,8 @@ class RTSPClient {
     private let parsingDataQueue = DispatchQueue(label: "com.odc.parsingDataQueue", attributes: .concurrent)
     private let dataAvailable = DispatchSemaphore(value: 0) // 데이터 사용 신호
     
-    private let videoQueue = ThreadSafeQueue<Data>()
+    private let video264Queue = ThreadSafeQueue<Data>()
+    private let video265Queue = ThreadSafeQueue<(data: Data, rtpTimestamp: UInt32, nalType: UInt8)>()
     private let audioQueue = ThreadSafeQueue<Data>()
     //private let semaphore = DispatchSemaphore(value: 1)
     
@@ -484,11 +485,11 @@ extension RTSPClient {
                     var unitData = Data()
                     if nalDataIndex != 0 {
                         unitData = Data(nalUnit[nalDataIndex - 4..<nalUnit.count])
-                        self.videoQueue.enqueue(unitData)
+                        self.video264Queue.enqueue(unitData)
                         print("videoQueue enqueue 1")
                     } else {
                         unitData = Data(nalUnit)
-                        self.videoQueue.enqueue(unitData)
+                        self.video264Queue.enqueue(unitData)
                         print("videoQueue enqueue 2")
                     }
                 } else {
@@ -505,7 +506,7 @@ extension RTSPClient {
                     //print("rtpH265Parser result nalUnit: \(nalUnit)")
                     let header = nalUnit[4]
                     let nalUnitType = (header >> 1) & 0x3F
-                    print("rtpH265 nalUnitType: \(nalUnitType)")
+                    print("rtpH265 nalUnitType: \(nalUnitType)") // UInt8
                     
                     if !videoDecodingInfo.vps.isEmpty &&
                        !videoDecodingInfo.sps.isEmpty &&
@@ -523,14 +524,14 @@ extension RTSPClient {
                     case 19, 20:
                         if readyDecode == true {
                             let unitData = Data(nalUnit)
-                            self.videoQueue.enqueue(unitData)
+                            self.video265Queue.enqueuePacket(unitData, timestamp: rtpHeader.timeStamp, nalType: nalUnitType)
                             print("videoQueue enqueue 1")
                         } else {
                             break;
                         }
                     case 0, 1, 6:
                             let unitData = Data(nalUnit)
-                            self.videoQueue.enqueue(unitData)
+                        self.video265Queue.enqueuePacket(unitData, timestamp: rtpHeader.timeStamp, nalType: nalUnitType)
                             print("videoQueue enqueue 2")
                             break;
                     default:
@@ -591,8 +592,12 @@ extension RTSPClient {
         
     }
     
-    func getVideoQueue() -> ThreadSafeQueue<Data> {
-        return videoQueue
+    func getVideo264Queue() -> ThreadSafeQueue<Data> {
+        return video264Queue
+    }
+    
+    func getVideo265Queue() -> ThreadSafeQueue<(data: Data, rtpTimestamp: UInt32, nalType: UInt8)> {
+        return video265Queue
     }
 
     func getAudioQueue() -> ThreadSafeQueue<Data> {

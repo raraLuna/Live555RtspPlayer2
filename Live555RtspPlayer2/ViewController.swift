@@ -366,13 +366,13 @@ class ViewController: UIViewController {
 
             print("VideoTrack().videoCodec: \(videoDecodingInfo.codec)")
             if videoDecodingInfo.codec == 0 {
-                self.h264Decoder = H264Decoder(videoQueue: rtspClient.getVideoQueue())
+                self.h264Decoder = H264Decoder(videoQueue: rtspClient.getVideo264Queue())
                 
                 self.h264Decoder?.delegate = self.metalRender
                 self.h264Decoder?.start()
                 
             } else if videoDecodingInfo.codec == 1 {
-                self.h265Decoder = H265Decoder(videoQueue: rtspClient.getVideoQueue())
+                self.h265Decoder = H265Decoder(videoQueue: rtspClient.getVideo265Queue())
                 self.h265Decoder?.delegate = self.metalRender
                 self.h265Decoder?.start()
             }
