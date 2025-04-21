@@ -335,6 +335,8 @@ extension RTSPClient {
             self.isRunning = true
             
             while self.isRunning {
+                let timestamp = DebugLog.currentTimeString()
+                print("startReceivingData timestampt: \(timestamp)")
                 // 1byte 만큼 데이터 읽기
                 var oneByteBuffer = [UInt8](repeating: 0, count: 1)
                 var threeByteBuffer = [UInt8](repeating: 0, count: 3)
@@ -529,11 +531,14 @@ extension RTSPClient {
                         } else {
                             break;
                         }
-                    case 0, 1, 6:
+                    case 0, 1:
                             let unitData = Data(nalUnit)
                         self.video265Queue.enqueuePacket(unitData, timestamp: rtpHeader.timeStamp, nalType: nalUnitType)
                             print("videoQueue enqueue 2")
                             break;
+                    case 6:
+                        print("SEI Frame nalType:\(nalUnitType) is skipped")
+                        break;
                     default:
                         break;
                     }

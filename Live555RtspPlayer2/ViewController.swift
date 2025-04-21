@@ -36,10 +36,11 @@ class ViewController: UIViewController {
     private var h264Decoder: H264Decoder?
     private var h265Decoder: H265Decoder?
     private var aacDecoder: AudioDecoder?
+    private var metalRender: MetalRender?
     private var isRunning = false
     private var pcmData: [[UInt8]] = []
     
-    var metalRender: MetalRender!
+    //var metalRender: MetalRender!
     private let audioPcmQueue = ThreadSafeQueue<[UInt8]>()
     
     let backgroundQueue = DispatchQueue(label: "com.olivendove.backgroundQueue", qos: .background)
@@ -70,6 +71,7 @@ class ViewController: UIViewController {
         print("connect to url: \(self.url)")
         
         metalRender = MetalRender(view: self.imageView)
+        //metalRender = MetalRender(view: self.imageView, frameQueue: ThreadSafeQueue<(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime)>() )
     }
     
     func processError(apiError: ApiError) {
@@ -375,6 +377,7 @@ class ViewController: UIViewController {
                 self.h265Decoder = H265Decoder(videoQueue: rtspClient.getVideo265Queue())
                 self.h265Decoder?.delegate = self.metalRender
                 self.h265Decoder?.start()
+                
             }
             
             let pcmPlayer = PCMPlayer(audioPcmQueue: self.audioPcmQueue)

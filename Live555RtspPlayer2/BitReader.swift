@@ -21,15 +21,15 @@ class BitReader {
         self.data = data
     }
 
-    func readBits(_ count: Int) -> UInt32 {
-        var value: UInt32 = 0
+    func readBits(_ count: Int) -> UInt {
+        var value: UInt = 0
         for _ in 0..<count {
-            value = (value << 1) | UInt32(readBit())
+            value = (value << 1) | UInt(readBit())
         }
         return value
     }
 
-    func readBit() -> UInt8 {
+    func readBit() -> UInt {
         guard byteOffset < data.count else { return 0 }
         let byte = data[byteOffset]
         let bit = (byte >> (7 - bitOffset)) & 1
@@ -38,21 +38,38 @@ class BitReader {
             bitOffset = 0
             byteOffset += 1
         }
-        return bit
+        return UInt(bit)
     }
-
-    func readUE() -> UInt32 {
-        var zeros: Int = 0
-        while readBit() == 0 {
+    
+//    func readUE() -> Int {
+//            var zeroBits = 0
+//            while readBits(1) == 0 && byteOffset < data.count {
+//                zeroBits += 1
+//            }
+//            let rest = readBits(zeroBits)
+//        return Int((1 << zeroBits) - 1 + rest)
+//        }
+    
+    func readUE() -> UInt {
+        var zeros = 0
+        while readBit() == 0 && byteOffset < data.count {
             zeros += 1
         }
-        let value = readBits(zeros)
-        return (1 << zeros) - 1 + value
+
+        var value: UInt = 1
+        for _ in 0..<zeros {
+            value = (value << 1) | readBit()
+        }
+
+        return value - 1
     }
 
-    func skipBits(_ count: Int) {
-        for _ in 0..<count {
-            _ = readBit()
+    func readSE() -> Int {
+        let ueVal = readUE()
+        if ueVal % 2 == 0 {
+            return -Int(ueVal / 2)
+        } else {
+            return Int((ueVal + 1) / 2)
         }
     }
 }

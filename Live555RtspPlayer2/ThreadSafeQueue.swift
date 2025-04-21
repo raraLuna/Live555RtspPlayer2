@@ -6,6 +6,8 @@
 //
 
 import Foundation
+import AVFoundation
+import VideoToolbox
 
 final class ThreadSafeQueue<T> {
     private var queue: [T] = []
@@ -43,6 +45,12 @@ final class ThreadSafeQueue<T> {
         print(queue)
         lock.signal()
     }
+    
+    func sort(by areInIncreasingOrder: (T, T) -> Bool) {
+        lock.wait()
+        queue.sort(by: areInIncreasingOrder)
+        lock.signal()
+    }
 }
 
 extension ThreadSafeQueue where T == (data: Data, rtpTimestamp: UInt32, nalType: UInt8) {
@@ -51,6 +59,22 @@ extension ThreadSafeQueue where T == (data: Data, rtpTimestamp: UInt32, nalType:
     }
 
     func dequeuePacket() -> (data: Data, rtpTimestamp: UInt32, nalType: UInt8)? {
+        return self.dequeue()
+    }
+}
+
+extension ThreadSafeQueue where T == (pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime) {
+    func enqueueFrame(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime) {
+        self.enqueue((pixelBuffer, presentationTimeStamp))
+    }
+    
+    func sortByPresentationTimeStamp() {
+        self.sort { lhs, rhs in
+            return lhs.presentationTimeStamp < rhs.presentationTimeStamp
+        }
+    }
+
+    func dequeueFrame() -> (pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime)? {
         return self.dequeue()
     }
 }

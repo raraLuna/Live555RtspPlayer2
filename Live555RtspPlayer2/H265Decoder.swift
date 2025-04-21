@@ -16,6 +16,11 @@ struct H265Frame {
     let nalUnit: Data
 }
 
+struct VideoFrame {
+    let pixelBuffer: CVPixelBuffer
+    let presentationTimeStamp: CMTime
+}
+
 protocol H265DecoderDelegate: AnyObject {
     func didDecodeFrame(_ pixelBuffer: CVPixelBuffer)
 }
@@ -43,11 +48,15 @@ class H265Decoder {
     
     private let videoQueue: ThreadSafeQueue<(data: Data, rtpTimestamp: UInt32, nalType: UInt8)>
     weak var delegate: H265DecoderDelegate?
+    let calculator = H265POCCalculator()
     
     private var isDecoding = false
     private var flagIn: VTDecodeFrameFlags {
         H265Decoder.defaultDecodeFlags
     }
+    
+    private var frames: [VideoFrame] = []
+    private let frameQueue = ThreadSafeQueue<(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime)>()
     
     private var rtpClockRate: Double = 90000.0
     private var baseRTPTimestamp: UInt32?
@@ -56,6 +65,8 @@ class H265Decoder {
     private var decodeBuffer: [(data: Data, dts: CMTime)] = []
     private var frameBuffer: [H265Frame] = []
     private var sampleBufferArray: [CMSampleBuffer] = []
+    private var imageBuffer: [CVPixelBuffer] = []
+    open var isBaseline: Bool = true
     
     private let decompressionOutputCallback: VTDecompressionOutputCallback = { (
         decompressionOutputRefCon,
@@ -72,19 +83,35 @@ class H265Decoder {
             print("디코딩 오류: status = \(status), imageBuffer = \(String(describing: imageBuffer))")
             return
         }
+        
         let pixelBuffer = imageBuffer as CVPixelBuffer
         //print("비디오 디코딩 완료 - CVPixelBuffer 얻음 \(pixelBuffer)")
         print("비디오 디코딩 완료 - CVPixelBuffer 얻음")
+        print("비디오 디코딩 완료 presentationTimeStamp: \(presentationTimeStamp)")
+        print("비디오 디코딩 완료 duration: \(duration)")
         //let dumpFilePath = "/Users/yumi/Documents/videoDump/decoded265_frame.yuv"
         //MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
         
+        
+        
         if let refCon = decompressionOutputRefCon {
             let decoder = Unmanaged<H265Decoder>.fromOpaque(refCon).takeUnretainedValue()
-            let dumpFilePath = "/Users/yumi/Documents/videoDump/decoded265_frame\(decoder.frameIndex).yuv"
+            //let dumpFilePath = "/Users/yumi/Documents/videoDump/decoded265_frame\(decoder.frameIndex).yuv"
             //MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
-            print("decoder.delegate: \(String(describing: decoder.delegate))")
-            decoder.delegate?.didDecodeFrame(pixelBuffer)
+            //print("decoder.delegate: \(String(describing: decoder.delegate))")
+            
+            decoder.frameQueue.enqueueFrame(pixelBuffer: pixelBuffer, presentationTimeStamp: presentationTimeStamp)
+            decoder.frameQueue.sortByPresentationTimeStamp()
+            
+            if decoder.frameQueue.count() >= 5 {
+                if let pixelFrameBuffer = decoder.frameQueue.dequeueFrame()?.pixelBuffer {
+                    decoder.delegate?.didDecodeFrame(pixelFrameBuffer)
+                }
+            }
         }
+            
+            //decoder.delegate?.didDecodeFrame(pixelBuffer)
+        
     }
     
     init(videoQueue: ThreadSafeQueue<(data: Data, rtpTimestamp: UInt32, nalType: UInt8)>) {
@@ -122,21 +149,95 @@ class H265Decoder {
                 }
                 
                 let dts = convertRTPTimestampToCMTime(rtpTimestamp)
-                guard let poc = H265SliceHeaderParser.parsePOC(from: nalData) else { return }
-                let pts = CMTime(value: Int64(poc * 1001), timescale: 90000)
-                print("dts: \(dts)")
-                print("poc: \(poc), naltype: \(nalType)")
-                print("pts: \(pts)")
-                let frame = H265Frame(poc: poc, dts: dts, pts: pts, nalUnit: nalData)
+                var pts = CMTime()
                 
+                // [start code] + [nal header 2 bytes] + [payload (rbsp)]
+                let spsData = videoDecodingInfo.sps
+                print("spsDATA[0]: \(spsData[0])")
+                let rbspSPS = extractRBSP(from: spsData)
+                print("rbspSPS: \(rbspSPS)")
+                print("rbspSPS hex: \(rbspSPS.hexString)")
+                
+                // log2_max_pic_order_cnt_lsb
+                guard let spsInfoParsing = H265SPSParser.parse(rbsp: rbspSPS) else { return }
+                print("spsInfoParsing: \(spsInfoParsing)") // 0~15
+                
+                guard let picOrderCntLsb = H265SliceHeaderParser.parse(data: nalData, log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsb) else { return }
+                print("picOrderCntLsb: \(picOrderCntLsb.picOrderCntLsb), nalType: \(nalType)")
+                
+            
+                var poc = calculator.calculatePOC(currentPocLsb: picOrderCntLsb.picOrderCntLsb, log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsb)
+                
+                print("calculated poc: \(poc) ; nalType: \(nalType)")
+                if nalType == 1 {
+                    poc += 14
+                }
+                
+                print("calculated2 poc: \(poc) ; nalType: \(nalType)")
+//                
+//                let sorter = FrameSorter(log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsb)
+//                
+//                let sortedFrames = sorter.push(picOrderCntLsb: poc, nalType: Int(nalType), data: nalData)
+//                for frame in sortedFrames {
+//                    print("출력할 Frame - POC: \(frame.poc), NAL Type: \(frame.nalType)")
+//                }
+//                
+//                // 다 넣은 후 마지막에
+//                let remainingFrames = sorter.flushRemaining()
+//                for frame in remainingFrames {
+//                    print("남은 Frame - POC: \(frame.poc), NAL Type: \(frame.nalType)")
+//                }
+                
+                 // I - B - B - B - P 순서로 프레임 재정렬 큐
+               
+                pts = CMTime(value: CMTimeValue(poc), timescale: 90000)
+                
+                
+                print("dts: \(dts), \npts: \(pts)")
+                print("poc: \(poc), naltype: \(nalType)")
+                let frame = H265Frame(poc: poc, dts: dts, pts: pts, nalUnit: nalData)
                 decodeFrame(framedata: frame)
-
                 } else {
                     usleep(10_000)
                 }
             }
         }
+     
+    private func extractRBSP(from data: Data) -> Data {
+        let nalHeaderSize = 2
+        guard data.count > nalHeaderSize else {
+            return Data()
+        }
+        
+        let payload = Data(data.dropFirst(nalHeaderSize))
+        //print("payload[0]: \(payload[0])")
+        //print("payload hexString: \(payload.hexString)")
+        return convertToRBSP(payload)
+    }
     
+    private func convertToRBSP(_ data: Data) -> Data {
+        var rbsp = Data()
+        var i = 0
+        while i < data.count {
+            //print("i: \(i)")
+            //print("data.count: \(data.count)")
+            //print("data[\(i)]: \(data[i])")
+            if i + 2 < data.count {
+                if data[i] == 0x00 && data[i+1] == 0x00 && data[i+2] == 0x03 {
+                    rbsp.append(contentsOf: [data[i], data[i+1]])
+                    i += 3
+                } else {
+                    rbsp.append(data[i])
+                    i += 1
+                }
+            } else {
+                rbsp.append(data[i])
+                i += 1
+            }
+
+        }
+        return rbsp
+    }
     
     private func convertRTPTimestampToCMTime(_ rtpTimestamp: UInt32) -> CMTime {
         if baseRTPTimestamp == nil {
@@ -240,6 +341,7 @@ class H265Decoder {
         
     }
     
+        //private func decodeFrame(framedata : H265Frame) {
     private func decodeFrame(framedata : H265Frame) {
         guard let decompressionSession = self.decompressionSession,
               let formatDescription = self.formatDescription else {
@@ -276,9 +378,9 @@ class H265Decoder {
         //print("CMBlockBuffer dataLength : \(blockBuffer.dataLength)")
         
         var sampleTimingInfo = CMSampleTimingInfo(
-            duration: CMTime(value: 1001, timescale: 90000),
+            duration: .invalid,
             presentationTimeStamp: framedata.pts,
-            decodeTimeStamp: CMTime.invalid
+            decodeTimeStamp: framedata.dts
         )
         print("sampleTimingInfo: \(sampleTimingInfo)")
         
@@ -302,7 +404,8 @@ class H265Decoder {
         //print("CMSampleBuffer 생성 성공: \(statusSB), \(String(describing: sampleBuffer))")
         //print("CMSampleBuffer totalSampleSize : \(sampleBuffer.totalSampleSize)")
         
-
+        //let pts = sampleBuffer.presentationTimeStamp
+        //print("")
         
         var flagOut: VTDecodeInfoFlags = []
         let statusDecode = VTDecompressionSessionDecodeFrame(
@@ -320,6 +423,57 @@ class H265Decoder {
         frameIndex += 1
     }
     
+    
+//    private func outFrameForSession(_ status: OSStatus, infoFlags: VTDecodeInfoFlags, imageBuffer: CVImageBuffer?, presentationTimestamp: CMTime, duration: CMTime) {
+//        guard let imageBuffer: CVPixelBuffer = imageBuffer, status == noErr else {
+//            print("failed to get imageBuffer or status is not noErr")
+//            return
+//        }
+//        
+//        var timingInfo = CMSampleTimingInfo(
+//            duration: duration,
+//            presentationTimeStamp: presentationTimestamp,
+//            decodeTimeStamp: CMTime.invalid
+//        )
+//        
+//        var videoFormatDescription: CMVideoFormatDescription?
+//        var status = CMVideoFormatDescriptionCreateForImageBuffer(
+//            allocator: kCFAllocatorDefault,
+//            imageBuffer: imageBuffer,
+//            formatDescriptionOut: &videoFormatDescription
+//        )
+//        guard status == noErr else {
+//            print("failed to create CMVideoFormatDescriptionCreateForImageBuffer")
+//            return
+//        }
+//        
+//        var sampleBuffer: CMSampleBuffer?
+//        status = CMSampleBufferCreateForImageBuffer(
+//            allocator: kCFAllocatorDefault,
+//            imageBuffer: imageBuffer,
+//            dataReady: true,
+//            makeDataReadyCallback: nil,
+//            refcon: nil,
+//            formatDescription: videoFormatDescription!,
+//            sampleTiming: &timingInfo,
+//            sampleBufferOut: &sampleBuffer
+//        )
+//        guard status == noErr else {
+//            print("failed to create CMSampleBufferCreateForImageBuffer")
+//            return
+//        }
+//        
+//        guard let buffer: CMSampleBuffer = sampleBuffer else {
+//            return
+//        }
+//        
+//        self.sampleBufferArray.append(buffer)
+//        self.sampleBufferArray.sort {
+//            $0.presentationTimeStamp < $1.presentationTimeStamp
+//        }
+//        
+//    }
+    
     func invalidateSession() {
         if let session = decompressionSession {
             VTDecompressionSessionInvalidate(session)
@@ -334,40 +488,45 @@ class H265Decoder {
     }
 
     func sortAndGetReadyFrames() -> [H265Frame] {
-//        // DTS 기준으로 정렬해서 디코딩 순서대로 처리
-//            frameBuffer.sort { $0.dts < $1.dts }
-//
-//            // B/P 프레임이 있을 수 있으므로 일정 수 이상 모였을 때만 출력
-//            guard frameBuffer.count >= 4 else { return [] }
-//
-//            // PTS 기준으로 정렬해 재생 순서를 맞춤
-//            let outputFrames = frameBuffer.sorted { $0.pts < $1.pts }
-//
-//            // 이미 출력된 프레임은 제거
-//            frameBuffer.removeAll()
-//
-//            return outputFrames
+        // sort: 제자리 정렬. 배열 자체를 변경함
+        // sorted: 새롭게 정렬한 배열을 return. 원본 배열은변하지 않음.
+        // DTS 기준으로 정렬해서 디코딩 순서대로 처리
+            frameBuffer.sort { $0.dts < $1.dts }
+
+            // B/P 프레임이 있을 수 있으므로 일정 수 이상 모였을 때만 출력
+            guard frameBuffer.count >= 1 else { return [] }
+
+            // PTS 기준으로 정렬해 재생 순서를 맞춤
+            let outputFrames = frameBuffer.sorted { $0.pts < $1.pts }
+
+            // 이미 출력된 프레임은 제거
+            frameBuffer.removeAll()
+
+            return outputFrames
 
         
         
-        // POC 순으로 정렬 (화면 재생 순서)
-        let sortedByPOC = frameBuffer.sorted { $0.pts < $1.pts }
-
-        // DTS 기준 정렬 → 실제 디코딩 순서
-        let sortedByDTS = frameBuffer.sorted { $0.dts < $1.dts }
-
-        var outputFrames: [H265Frame] = []
-        for (i, var frame) in sortedByPOC.enumerated() {
-            // PTS를 재생 순서대로 설정 (DTS 기준 인덱스 i 사용)
-            if i < sortedByDTS.count {
-                frame.pts = sortedByDTS[i].pts
-            }
-            outputFrames.append(frame)
-        }
-
-        frameBuffer.removeAll()
-        return sortedByDTS
+//        // POC 순으로 정렬 (화면 재생 순서)
+//        let sortedByPOC = frameBuffer.sorted { $0.pts < $1.pts }
+//
+//        // DTS 기준 정렬 → 실제 디코딩 순서
+//        let sortedByDTS = frameBuffer.sorted { $0.dts < $1.dts }
+//
+//        var outputFrames: [H265Frame] = []
+//        for (i, var frame) in sortedByPOC.enumerated() {
+//            // PTS를 재생 순서대로 설정 (DTS 기준 인덱스 i 사용)
+//            if i < sortedByDTS.count {
+//                frame.pts = sortedByDTS[i].pts
+//            }
+//            outputFrames.append(frame)
+//        }
+//
+//        frameBuffer.removeAll()
+//        return sortedByDTS
     }
 
+    func getFrameQueue() -> ThreadSafeQueue<(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime)> {
+        return frameQueue
+    }
 
 }
