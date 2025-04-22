@@ -37,6 +37,7 @@ class ViewController: UIViewController {
     private var h265Decoder: H265Decoder?
     private var aacDecoder: AudioDecoder?
     private var metalRender: MetalRender?
+    private var h265metalRender: H265MetalRender?
     private var isRunning = false
     private var pcmData: [[UInt8]] = []
     
@@ -51,6 +52,7 @@ class ViewController: UIViewController {
         //let rtspUrl = "rtsp://192.168.0.69:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
         //let rtspUrl = "rtsp://192.168.0.69:554/test.264"
         let rtspUrl = "rtsp://192.168.0.69:554/test.265"
+        //let rtspUrl = "rtsp://192.168.0.69:554/video_h265.mkv"
         
         self.loginBtn.isHidden = true
         guard let components = URLComponents(string: rtspUrl) else {
@@ -70,6 +72,7 @@ class ViewController: UIViewController {
         //print("rtspConnect host: \(self.urlHost), port: \(self.urlPort), path: \(self.urlPath)")
         print("connect to url: \(self.url)")
         
+        self.h265metalRender = H265MetalRender(view: self.imageView)
         metalRender = MetalRender(view: self.imageView)
         //metalRender = MetalRender(view: self.imageView, frameQueue: ThreadSafeQueue<(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime)>() )
     }
@@ -238,6 +241,7 @@ class ViewController: UIViewController {
             } else if videoDecodingInfo.codec == 1 {
                 self.h265Decoder?.stop()
                 self.h265Decoder = nil
+                self.h265metalRender?.stop()
             }
             
             self.aacDecoder?.stop()
@@ -375,8 +379,19 @@ class ViewController: UIViewController {
                 
             } else if videoDecodingInfo.codec == 1 {
                 self.h265Decoder = H265Decoder(videoQueue: rtspClient.getVideo265Queue())
-                self.h265Decoder?.delegate = self.metalRender
                 self.h265Decoder?.start()
+
+                //self.h265Decoder?.delegate = self.h265metalRender
+                self.h265metalRender?.frameQueue = (self.h265Decoder?.getFrameQueue())!
+                self.h265metalRender?.start()
+
+                //print("self.h265Decoder?.delegate: \(String(describing: self.h265Decoder?.delegate))")
+                
+                
+                
+                
+
+                
                 
             }
             

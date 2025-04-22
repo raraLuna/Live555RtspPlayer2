@@ -10,7 +10,7 @@ import AVFoundation
 import Metal
 import MetalKit
 
-class MetalRender: H264DecoderDelegate, H265DecoderDelegate {
+class MetalRender: H264DecoderDelegate {
     private var device: MTLDevice!
     private var commandQueue: MTLCommandQueue!
     private var pipelineState: MTLRenderPipelineState!
@@ -20,6 +20,8 @@ class MetalRender: H264DecoderDelegate, H265DecoderDelegate {
     private var colorParamBuffer: MTLBuffer!
     
     private var metalLayer: CAMetalLayer!
+    
+    var frameQueue = ThreadSafeQueue<(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime)>()
     
     init(view: UIView) {
         device = MTLCreateSystemDefaultDevice()!

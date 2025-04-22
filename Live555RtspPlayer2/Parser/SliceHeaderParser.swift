@@ -169,7 +169,12 @@ final class H265POCCalculator {
     private var prevPicOrderCntLsb: Int = 0
     private var prevPocMsb: Int = 0
 
-    func calculatePOC(currentPocLsb: Int, log2MaxPicOrderCntLsb: Int) -> Int {
+    func calculatePOC(currentPocLsb: Int, log2MaxPicOrderCntLsb: Int, nalType: Int, lastPoc: Int) -> Int {
+        // nalType이 6(SEI)라면 이전 POC를 그대로 반환
+        if nalType == 6 {
+            return lastPoc
+        }
+
         let maxPicOrderCntLsb = 1 << log2MaxPicOrderCntLsb
         var pocMsb: Int
 
@@ -188,6 +193,24 @@ final class H265POCCalculator {
         prevPocMsb = pocMsb
 
         return poc
+//        let maxPicOrderCntLsb = 1 << log2MaxPicOrderCntLsb
+//        var pocMsb: Int
+//
+//        if (currentPocLsb < prevPicOrderCntLsb) &&
+//            ((prevPicOrderCntLsb - currentPocLsb) >= maxPicOrderCntLsb / 2) {
+//            pocMsb = prevPocMsb + maxPicOrderCntLsb
+//        } else if (currentPocLsb > prevPicOrderCntLsb) &&
+//                    ((currentPocLsb - prevPicOrderCntLsb) > maxPicOrderCntLsb / 2) {
+//            pocMsb = prevPocMsb - maxPicOrderCntLsb
+//        } else {
+//            pocMsb = prevPocMsb
+//        }
+//
+//        let poc = pocMsb + currentPocLsb
+//        prevPicOrderCntLsb = currentPocLsb
+//        prevPocMsb = pocMsb
+//
+//        return poc
     }
 }
 

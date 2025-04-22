@@ -510,6 +510,9 @@ extension RTSPClient {
                     let nalUnitType = (header >> 1) & 0x3F
                     print("rtpH265 nalUnitType: \(nalUnitType)") // UInt8
                     
+                    print("videoDecodingInfo.vps isEmpty?: \(videoDecodingInfo.vps.isEmpty)")
+                    print("videoDecodingInfo.sps isEmpty?: \(videoDecodingInfo.sps.isEmpty)")
+                    print("videoDecodingInfo.pps isEmpty?: \(videoDecodingInfo.pps.isEmpty)")
                     if !videoDecodingInfo.vps.isEmpty &&
                        !videoDecodingInfo.sps.isEmpty &&
                        !videoDecodingInfo.pps.isEmpty {
@@ -531,14 +534,14 @@ extension RTSPClient {
                         } else {
                             break;
                         }
-                    case 0, 1:
+                    case 0, 1, 6:
                             let unitData = Data(nalUnit)
                         self.video265Queue.enqueuePacket(unitData, timestamp: rtpHeader.timeStamp, nalType: nalUnitType)
                             print("videoQueue enqueue 2")
                             break;
-                    case 6:
-                        print("SEI Frame nalType:\(nalUnitType) is skipped")
-                        break;
+//                    case 6:
+//                        print("SEI Frame nalType:\(nalUnitType) is skipped")
+//                        break;
                     default:
                         break;
                     }

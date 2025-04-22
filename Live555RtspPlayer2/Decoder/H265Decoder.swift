@@ -68,6 +68,8 @@ class H265Decoder {
     private var imageBuffer: [CVPixelBuffer] = []
     open var isBaseline: Bool = true
     
+    private var lastPoc: Int = 0
+    
     private let decompressionOutputCallback: VTDecompressionOutputCallback = { (
         decompressionOutputRefCon,
         sourceFrameRefCon,
@@ -96,18 +98,18 @@ class H265Decoder {
         
         if let refCon = decompressionOutputRefCon {
             let decoder = Unmanaged<H265Decoder>.fromOpaque(refCon).takeUnretainedValue()
-            //let dumpFilePath = "/Users/yumi/Documents/videoDump/decoded265_frame\(decoder.frameIndex).yuv"
-            //MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
+            let dumpFilePath = "/Users/yumi/Documents/videoDump/decoded265_frame\(decoder.frameIndex).yuv"
+            MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
             //print("decoder.delegate: \(String(describing: decoder.delegate))")
             
             decoder.frameQueue.enqueueFrame(pixelBuffer: pixelBuffer, presentationTimeStamp: presentationTimeStamp)
             decoder.frameQueue.sortByPresentationTimeStamp()
             
-            if decoder.frameQueue.count() >= 5 {
-                if let pixelFrameBuffer = decoder.frameQueue.dequeueFrame()?.pixelBuffer {
-                    decoder.delegate?.didDecodeFrame(pixelFrameBuffer)
-                }
-            }
+//            if decoder.frameQueue.count() >= 5 {
+//                if let pixelFrameBuffer = decoder.frameQueue.dequeueFrame()?.pixelBuffer {
+//                    decoder.delegate?.didDecodeFrame(pixelFrameBuffer)
+//                }
+//            }
         }
             
             //decoder.delegate?.didDecodeFrame(pixelBuffer)
@@ -124,7 +126,7 @@ class H265Decoder {
     
     func start() {
         isDecoding = true
-        DispatchQueue.global(qos: .userInteractive).async {
+        DispatchQueue.global(qos: .userInitiated).async {
             self.decode()
         }
     }
@@ -153,7 +155,7 @@ class H265Decoder {
                 
                 // [start code] + [nal header 2 bytes] + [payload (rbsp)]
                 let spsData = videoDecodingInfo.sps
-                print("spsDATA[0]: \(spsData[0])")
+                //print("spsDATA[0]: \(spsData[0])")
                 let rbspSPS = extractRBSP(from: spsData)
                 print("rbspSPS: \(rbspSPS)")
                 print("rbspSPS hex: \(rbspSPS.hexString)")
@@ -165,15 +167,16 @@ class H265Decoder {
                 guard let picOrderCntLsb = H265SliceHeaderParser.parse(data: nalData, log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsb) else { return }
                 print("picOrderCntLsb: \(picOrderCntLsb.picOrderCntLsb), nalType: \(nalType)")
                 
-            
-                var poc = calculator.calculatePOC(currentPocLsb: picOrderCntLsb.picOrderCntLsb, log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsb)
                 
-                print("calculated poc: \(poc) ; nalType: \(nalType)")
+                var poc = calculator.calculatePOC(currentPocLsb: picOrderCntLsb.picOrderCntLsb, log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsb, nalType: Int(nalType), lastPoc: lastPoc)
+                self.lastPoc = poc
+                
+                print("calculated poc: \(poc) ; nalType: \(nalType) ; frameIndex: \(frameIndex)")
                 if nalType == 1 {
                     poc += 14
                 }
                 
-                print("calculated2 poc: \(poc) ; nalType: \(nalType)")
+                print("calculated2 poc: \(poc) ; nalType: \(nalType) ; frameIndex: \(frameIndex)")
 //                
 //                let sorter = FrameSorter(log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsb)
 //                
