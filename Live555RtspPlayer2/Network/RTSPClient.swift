@@ -510,9 +510,9 @@ extension RTSPClient {
                     let nalUnitType = (header >> 1) & 0x3F
                     print("rtpH265 nalUnitType: \(nalUnitType)") // UInt8
                     
-                    print("videoDecodingInfo.vps isEmpty?: \(videoDecodingInfo.vps.isEmpty)")
-                    print("videoDecodingInfo.sps isEmpty?: \(videoDecodingInfo.sps.isEmpty)")
-                    print("videoDecodingInfo.pps isEmpty?: \(videoDecodingInfo.pps.isEmpty)")
+                    //print("videoDecodingInfo.vps isEmpty?: \(videoDecodingInfo.vps.isEmpty)")
+                    //("videoDecodingInfo.sps isEmpty?: \(videoDecodingInfo.sps.isEmpty)")
+                    //print("videoDecodingInfo.pps isEmpty?: \(videoDecodingInfo.pps.isEmpty)")
                     if !videoDecodingInfo.vps.isEmpty &&
                        !videoDecodingInfo.sps.isEmpty &&
                        !videoDecodingInfo.pps.isEmpty {

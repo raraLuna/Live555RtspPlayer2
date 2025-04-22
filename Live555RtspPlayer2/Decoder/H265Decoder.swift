@@ -103,6 +103,7 @@ class H265Decoder {
             //print("decoder.delegate: \(String(describing: decoder.delegate))")
             
             decoder.frameQueue.enqueueFrame(pixelBuffer: pixelBuffer, presentationTimeStamp: presentationTimeStamp)
+            // I - B - B - B - P 순서로 프레임 재정렬 큐
             decoder.frameQueue.sortByPresentationTimeStamp()
             
 //            if decoder.frameQueue.count() >= 5 {
@@ -171,28 +172,21 @@ class H265Decoder {
                 var poc = calculator.calculatePOC(currentPocLsb: picOrderCntLsb.picOrderCntLsb, log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsb, nalType: Int(nalType), lastPoc: lastPoc)
                 self.lastPoc = poc
                 
+                
                 print("calculated poc: \(poc) ; nalType: \(nalType) ; frameIndex: \(frameIndex)")
                 if nalType == 1 {
+                    // 1 - 0 - 0 - 0 순서로 디코딩, but 재생할 때는 0 - 0 - 0 - 1 순서로 재생해주기 위함
                     poc += 14
+                }
+                if nalType == 6 {
+                    // nalType 6은 원래 SEI 이나, 현재 예제로 사용 중인 영상에서 19 - 6 - 6- 6으로 오는 프레임이 있는데 이때 6이 B프레임인 것으로 보임
+                    // 1 -0- 0-0과 같이 디코딩 순서는 19 -6 -6-6이지만 재생 순서는 6 - 6 -6- 19가 맞다.
+                    // 이 것을 맞춰주기 위한 하드코딩 부분임. 예제 영상이 달라지면 (서버에서 보내는 영상이 달라지면) 이 부분 수정이 필요하다.
+                    /// nalType 6은 SEI 로 디코딩의 보조 정보를 담은 데이터일 뿐 실제 프레임이 아닌 경우가 많은데, 인코딩의 설정에 따라 6임에도 실제 프레임일 수 있음. 지금이 그런 경우로 보인다. 
+                    poc -= 1
                 }
                 
                 print("calculated2 poc: \(poc) ; nalType: \(nalType) ; frameIndex: \(frameIndex)")
-//                
-//                let sorter = FrameSorter(log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsb)
-//                
-//                let sortedFrames = sorter.push(picOrderCntLsb: poc, nalType: Int(nalType), data: nalData)
-//                for frame in sortedFrames {
-//                    print("출력할 Frame - POC: \(frame.poc), NAL Type: \(frame.nalType)")
-//                }
-//                
-//                // 다 넣은 후 마지막에
-//                let remainingFrames = sorter.flushRemaining()
-//                for frame in remainingFrames {
-//                    print("남은 Frame - POC: \(frame.poc), NAL Type: \(frame.nalType)")
-//                }
-                
-                 // I - B - B - B - P 순서로 프레임 재정렬 큐
-               
                 pts = CMTime(value: CMTimeValue(poc), timescale: 90000)
                 
                 
