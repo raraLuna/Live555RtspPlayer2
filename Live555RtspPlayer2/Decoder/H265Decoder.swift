@@ -72,6 +72,10 @@ class H265Decoder {
     
     private var lastPoc: Int = 0
     private var preSegmentAddress: UInt = 0
+    
+    //Metal draw 에서 사용하기 위해 static으로 작성
+    // frameCount: 하나의 규칙을 보이는 slice 묶음.
+    // gopCount: 새로운 IDR이 도착하기까지의 frames 묶음.
     static var frameCount: Int = 1
     static var gopCount: Int = 0
     
@@ -248,6 +252,11 @@ class H265Decoder {
 //                let ptsSeconds = Double(poc) / frameRate
 //                print("calculatePTS ptsSeconds: \(ptsSeconds)")
                 
+                // fps 구하여 pts 값 얻는 공식 작성 실패함...
+                // bitReader에는 문제가 없는 듯 한데 sliceHeader의 parsing 값의 사용이 어렵다..
+                // slice 재정렬 순서와 관련하여 활용할만한 값은 sliceSegmentAddress 뿐이므로 임시 코드 작성
+                // 그 외로 재정렬 관련한 새로운 아이디어 있으면 시도해볼 것.
+                // 영상의 포맷에 따라 디테일한 부분은 하드코딩으로 수정해야함
                 var segmentAddress = parsedSliceHeader.sliceSegmentAddress
                 print("decode nalType: \(nalType)")
                 if nalType == 19 || nalType == 20 || nalType == 21{
@@ -270,6 +279,9 @@ class H265Decoder {
                             H265Decoder.frameCount = 1
                             H265Decoder.gopCount += 1
                         } else if H265Decoder.frameCount == 1 && H265Decoder.gopCount > 0 {
+                            // gop 새로 시작하는 경우 이전 gop의 slice 모두 draw 하고 난 뒤에
+                            // 새로운 gop loop를 시작하기 위한 임시 조치
+                            // TODO: 이 부분에서 버퍼링이 생기므로 코드 개선 필요함
                             print("// pts:   new gop start!!!!")
                             print("// pts:   frameQueue.count: \(self.frameQueue.count())")
                             repeat {
