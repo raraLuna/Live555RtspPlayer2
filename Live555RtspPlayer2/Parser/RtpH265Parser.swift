@@ -21,7 +21,7 @@ class RtpH265Parser: RtpParser {
         if nalType < RTP_PACKET_TYPE_AP {
             nalUnit = processSingleFramePacket(data: data, length: length)
             clearFragmentedBuffer()
-            print("Single NAL (\(nalUnit.count)")
+            print("Single NAL (\(nalUnit.count))")
         } else if nalType == RTP_PACKET_TYPE_AP {
             print("need to implement processAggregation Packet")
         } else if nalType == RTP_PACKET_TYPE_FU {

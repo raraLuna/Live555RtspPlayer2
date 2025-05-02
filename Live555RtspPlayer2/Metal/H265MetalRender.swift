@@ -9,6 +9,7 @@ import Foundation
 import AVFoundation
 import Metal
 import MetalKit
+import CoreFoundation
 
 class H265MetalRender {
     private var device: MTLDevice!
@@ -101,8 +102,9 @@ class H265MetalRender {
     
     func start() {
         isRendering = true
+        print("[Thread] H265MetalRender thread: \(Thread.current)")
         DispatchQueue.global(qos: .userInteractive).async {
-            self.draw()
+            self.check()
         }
     }
     
@@ -110,15 +112,25 @@ class H265MetalRender {
         isRendering = false
     }
     
+    func check() {
+        while isRendering {
+            if H265Decoder.gopCount > 0 && H265Decoder.frameCount == 1 {
+                for _ in 0..<self.frameQueue.count() {
+                    self.draw()
+                }
+            } else {
+                if self.frameQueue.count() > 10 {
+                    self.draw()
+                } else {
+                    usleep(10000)
+                }
+            }
+        }
+    }
     //func draw(pixelBuffer: CVPixelBuffer) {
     func draw() {
         print("H265MetalRender draw start")
-        while isRendering {
-            guard self.frameQueue.count() > 30 else {
-                //print("H265MetalRender draw usleep: \(DebugLog.currentTimeString())")
-                usleep(5000) // 1000000 = 1초
-                continue
-            }
+
             if let (pixelBuffer, presentationTimeStamp) = self.frameQueue.dequeueFrame() {
                 print("H265MetalRender draw: \(presentationTimeStamp)")
                 guard let drawable = metalLayer.nextDrawable() else { return }
@@ -186,7 +198,7 @@ class H265MetalRender {
                 cmdBuffer.commit()
                 
                 print("draw finished")
-            }
+            
         }
     }
     

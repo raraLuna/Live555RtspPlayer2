@@ -34,7 +34,7 @@ class MakeDumpFile {
 
         // 데이터 변환 후 파일에 기록
         let data = Data(packet)
-        //fileHandle.seekToEndOfFile()  // 기존 파일에 추가
+        fileHandle.seekToEndOfFile()  // 기존 파일에 추가
         fileHandle.write(data)
         fileHandle.closeFile()
 

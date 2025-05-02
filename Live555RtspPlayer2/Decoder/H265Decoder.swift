@@ -30,7 +30,9 @@ protocol H265DecoderDelegate: AnyObject {
 // B‑frames can use both previous and forward frames for data reference to get the highest amount of data compression.
 
 // H265는 프레임의 재생 순서가 도착 순서와 일치하지 않음 -> sort 해야한다. 무엇을 기준으로??? timestamp???
-// A - B - C - D 순서로 도착햇으나, 재생 순서는 B - C - D - A 임.
+/// H265는 IDR프레임, P 프레임, B 프레임이 있다. P프레임은 IDR 프레임을 참고하여 만들어지고, B프레임은 IDR 프레임과 P 프레임을 참고하여 만들어진다.
+/// 이때 P 프레임은 디코딩을 위해서는 B 프레임보다 우선순위가 높으나 (먼저 디코딩되어야함) 재생 순서는 B 프레임보다 우선순위가 낮다 (나중에 재생되어야함)
+/// 즉,dts와 pts가 일치하지 않으므로 디코딩 후에 재정렬하여 재생해줘야한다. 
 
 class H265Decoder {
     public static var defaultDecodeFlags: VTDecodeFrameFlags = [
@@ -69,6 +71,15 @@ class H265Decoder {
     open var isBaseline: Bool = true
     
     private var lastPoc: Int = 0
+    private var preSegmentAddress: UInt = 0
+    static var frameCount: Int = 1
+    static var gopCount: Int = 0
+    
+    private var spsInfo: H265SPS?
+    private var ppsInfo: H265PPS?
+    private var vpsInfo: H265VPS?
+    
+    private var ptsContext = H265PTSContext(prevPicOrderCntMsb: 0, prevPicOrderCntLsb: 0)
     
     private let decompressionOutputCallback: VTDecompressionOutputCallback = { (
         decompressionOutputRefCon,
@@ -99,8 +110,9 @@ class H265Decoder {
         if let refCon = decompressionOutputRefCon {
             let decoder = Unmanaged<H265Decoder>.fromOpaque(refCon).takeUnretainedValue()
             let dumpFilePath = "/Users/yumi/Documents/videoDump/decoded265_frame\(decoder.frameIndex).yuv"
-            MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
+            //MakeDumpFile.dumpCVPixelBuffer(pixelBuffer, to: dumpFilePath)
             //print("decoder.delegate: \(String(describing: decoder.delegate))")
+            //decoder.frameIndex += 1
             
             decoder.frameQueue.enqueueFrame(pixelBuffer: pixelBuffer, presentationTimeStamp: presentationTimeStamp)
             // I - B - B - B - P 순서로 프레임 재정렬 큐
@@ -126,6 +138,27 @@ class H265Decoder {
     }
     
     func start() {
+//        let spsData = videoDecodingInfo.sps
+//        let rbspSPS = extractRBSP(from: spsData)
+//        var spsBitReader = BitReader(rbspSPS)
+//        let parsedSPS = SpsPpsParser().parseSPS(reader: &spsBitReader)
+//        self.spsInfo = parsedSPS
+//        print("parsedSPS: \(parsedSPS)")
+//        //print("parsedSPS.maxNumReorderPics: \(parsedSPS.maxNumReorderPics)") // [1]
+//        
+//        let ppsData = videoDecodingInfo.pps
+//        let rbspPPS = extractRBSP(from: ppsData)
+//        let ppsBitReader = BitReader(rbspPPS)
+//        let parsedPPS = SpsPpsParser().parsePPS(reader: ppsBitReader)
+//        self.ppsInfo = parsedPPS
+//        print("parsedPPS: \(parsedPPS)")
+        
+//                let vpsData = videoDecodingInfo.vps
+//                let rbspVPS = extractRBSP(from: vpsData)
+//                let vpsBitReader = BitReader(rbspVPS)
+//                let parsedVPS = SpsPpsParser().parseVPS(reader: vpsBitReader)
+//                print("parsedVPS: \(parsedVPS)")
+        
         isDecoding = true
         DispatchQueue.global(qos: .userInitiated).async {
             self.decode()
@@ -150,57 +183,186 @@ class H265Decoder {
                     self.setupDecoder(vps: vpsInfo, sps: spsInfo, pps: ppsInfo)
                     isDecoderInitialized = true
                 }
+                print("sps hex: \(videoDecodingInfo.sps.hexString)")
+                let spsData = videoDecodingInfo.sps
+                let rbspSPS = extractRBSP(from: spsData)
+                print("rbspSPS hex: \(rbspSPS.hexString)")
+                var spsBitReader = BitReader(rbspSPS)
+                let parsedSPS = SpsPpsParser().parseSPS(reader: &spsBitReader)
+                print("parsedSPS: \(parsedSPS)")
+                print("parsedSPS.maxNumReorderPics: \(parsedSPS.maxNumReorderPics)") // [1]? [2]?
+                
+                print("pps hex: \(videoDecodingInfo.pps.hexString)")
+                let ppsData = videoDecodingInfo.pps
+                let rbspPPS = extractRBSP(from: ppsData)
+                print("rbspPPS hex: \(rbspPPS.hexString)")
+                let ppsBitReader = BitReader(rbspPPS)
+                let parsedPPS = SpsPpsParser().parsePPS(reader: ppsBitReader)
+                print("parsedPPS: \(parsedPPS)")
                 
                 let dts = convertRTPTimestampToCMTime(rtpTimestamp)
                 var pts = CMTime()
                 
-                // [start code] + [nal header 2 bytes] + [payload (rbsp)]
-                let spsData = videoDecodingInfo.sps
-                //print("spsDATA[0]: \(spsData[0])")
-                let rbspSPS = extractRBSP(from: spsData)
-                print("rbspSPS: \(rbspSPS)")
-                print("rbspSPS hex: \(rbspSPS.hexString)")
+                guard let startCodeRange = findStartCode(in: nalData) else { return }
+                let nalPayload = nalData[startCodeRange.upperBound...]
                 
-                // log2_max_pic_order_cnt_lsb
-                guard let spsInfoParsing = H265SPSParser.parse(rbsp: rbspSPS) else { return }
-                print("spsInfoParsing: \(spsInfoParsing)") // 0~15
+                // sliceHeader를 읽을 때는 반드시 0x03이 제거된 논리적 데이터로 해석해야함
+                // 반면에 프레임 디코딩에는 emulation prevention byte(0x03)까지 포함해서 그대로 처리
+                // 디코더는 내부에서 알아서 emulation byte를 처리하거나, 그냥 payload로 삼을 수 있다.
+                let rbspNalData = extractRBSP(from: nalPayload)
+                let nalDataBitReader = BitReader(rbspNalData)
                 
-                guard let picOrderCntLsb = H265SliceHeaderParser.parse(data: nalData, log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsb) else { return }
-                print("picOrderCntLsb: \(picOrderCntLsb.picOrderCntLsb), nalType: \(nalType)")
+                // SliceHeader의 길이와 내용은 프레임마다 다르다. 10바이트 이상일 수 있으며, bitReader로 하나씩 읽어가면서 끝을 찾아야한다.
+                print("[parseH265SliceHeader] rbspNalData first 30 hex: \(rbspNalData[0..<30].hexString)")
+
+                //print("rbspNalData Hex: \(rbspNalData.hexString)")
+                let parsedSliceHeader = SliceHeaderParser().parseH265SliceHeader(reader: nalDataBitReader, sps: parsedSPS, pps: parsedPPS, nalType: nalType)
+                print("parsedSliceHeader: \(parsedSliceHeader)")
                 
-                
-                var poc = calculator.calculatePOC(currentPocLsb: picOrderCntLsb.picOrderCntLsb, log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsb, nalType: Int(nalType), lastPoc: lastPoc)
-                self.lastPoc = poc
-                
-                
-                print("calculated poc: \(poc) ; nalType: \(nalType) ; frameIndex: \(frameIndex)")
-                if nalType == 1 {
-                    // 1 - 0 - 0 - 0 순서로 디코딩, but 재생할 때는 0 - 0 - 0 - 1 순서로 재생해주기 위함
-                    poc += 14
+                guard let poc = PTSCalculator().calculatePOC(sliceHeader: parsedSliceHeader, sps: parsedSPS, context: &ptsContext) else {
+                    return
                 }
-                if nalType == 6 {
-                    // nalType 6은 원래 SEI 이나, 현재 예제로 사용 중인 영상에서 19 - 6 - 6- 6으로 오는 프레임이 있는데 이때 6이 B프레임인 것으로 보임
-                    // 1 -0- 0-0과 같이 디코딩 순서는 19 -6 -6-6이지만 재생 순서는 6 - 6 -6- 19가 맞다.
-                    // 이 것을 맞춰주기 위한 하드코딩 부분임. 예제 영상이 달라지면 (서버에서 보내는 영상이 달라지면) 이 부분 수정이 필요하다.
-                    /// nalType 6은 SEI 로 디코딩의 보조 정보를 담은 데이터일 뿐 실제 프레임이 아닌 경우가 많은데, 인코딩의 설정에 따라 6임에도 실제 프레임일 수 있음. 지금이 그런 경우로 보인다. 
-                    poc -= 1
+//                var poc = calculator.calculatePOC(currentPocLsb: Int(parsedSliceHeader.slicePicOrderCntLsb), log2MaxPicOrderCntLsb: Int(parsedSPS.log2MaxPicOrderCntLsbMinus4), nalType: Int(nalType), lastPoc: lastPoc)
+//                    self.lastPoc = poc
+//                print("nalType: \(nalType)// POC: \(poc)// sliceSegmentAddress: \(parsedSliceHeader.sliceSegmentAddress)")
+//                
+//                // FPS 계산
+//                var fps: Double? = nil
+//                if let vui = parsedSPS.vuiParameters, vui.vuiTimingInfoPresentFlag,
+//                   let timeScale = vui.timeScale, let numUnitsInTick = vui.numUnitsInTick {
+//                    print("calculatePTS vuiTimingInfoPresentFlag: \(vui.vuiTimingInfoPresentFlag)")
+//                    print("calculatePTS numUnitsInTick: \(vui.numUnitsInTick)")
+//                    print("calculatePTS timeScale: \(vui.timeScale)")
+//
+//                    //fps = Double(timeScale) / (2.0 * Double(numUnitsInTick))
+//                    fps = Double(timeScale) / (Double(numUnitsInTick))
+//                }
+//
+//                guard let frameRate = fps else {
+//                    print("VUI 정보 없음: FPS 계산 불가")
+//                    return
+//                }
+//                print("calculatePTS frameRate: \(frameRate)")
+//                
+//                // PTS = POC / FPS
+//                let ptsSeconds = Double(poc) / frameRate
+//                print("calculatePTS ptsSeconds: \(ptsSeconds)")
+                
+                var segmentAddress = parsedSliceHeader.sliceSegmentAddress
+                print("decode nalType: \(nalType)")
+                if nalType == 19 || nalType == 20 || nalType == 21{
+                    pts = CMTime(value: CMTimeValue(segmentAddress - 10), timescale: 90000)
+                    print("nalType: \(nalType) // pts: \(pts)")
+                    let frame = H265Frame(poc: Int(poc), dts: dts, pts: pts, nalUnit: nalData)
+                    decodeFrame(framedata: frame)
+                    self.preSegmentAddress = segmentAddress
+                } else if nalType == 1 {
+                    if preSegmentAddress > segmentAddress {
+                        let value =  10 * H265Decoder.frameCount
+                        pts = CMTime(value: CMTimeValue((Int(segmentAddress) * 2) + value), timescale: 90000)
+                        print("nalType: \(nalType) // pts: \(pts)// segmentAddress * 2 + value: \(segmentAddress) * 2 + \(value) // frameCount: \(H265Decoder.frameCount)")
+                        let frame = H265Frame(poc: Int(poc), dts: dts, pts: pts, nalUnit: nalData)
+//                        decodeFrame(framedata: frame)
+//                        self.preSegmentAddress = segmentAddress
+                        if H265Decoder.frameCount == 50 {
+                            decodeFrame(framedata: frame)
+                            self.preSegmentAddress = segmentAddress
+                            H265Decoder.frameCount = 1
+                            H265Decoder.gopCount += 1
+                        } else if H265Decoder.frameCount == 1 && H265Decoder.gopCount > 0 {
+                            print("// pts:   new gop start!!!!")
+                            print("// pts:   frameQueue.count: \(self.frameQueue.count())")
+                            repeat {
+                                usleep(1)
+                            } while self.frameQueue.count() != 0
+                            print("// pts:   frameQueue.count: \(self.frameQueue.count())")
+                            decodeFrame(framedata: frame)
+                            self.preSegmentAddress = segmentAddress
+                            H265Decoder.frameCount += 1
+                        } else {
+                            decodeFrame(framedata: frame)
+                            self.preSegmentAddress = segmentAddress
+                            H265Decoder.frameCount += 1
+                        }
+                    } else  {
+                        pts = CMTime(value: CMTimeValue(segmentAddress), timescale: 90000)
+                        print("nalType: \(nalType) // pts: \(pts)")
+                        let frame = H265Frame(poc: Int(poc), dts: dts, pts: pts, nalUnit: nalData)
+                        decodeFrame(framedata: frame)
+                        self.preSegmentAddress = segmentAddress
+                    }
+                } else if nalType == 0 {
+                    pts = CMTime(value: CMTimeValue(segmentAddress), timescale: 90000)
+                    print("nalType: \(nalType) // pts: \(pts)")
+                    let frame = H265Frame(poc: Int(poc), dts: dts, pts: pts, nalUnit: nalData)
+                    decodeFrame(framedata: frame)
+                    self.preSegmentAddress = segmentAddress
                 }
                 
-                print("calculated2 poc: \(poc) ; nalType: \(nalType) ; frameIndex: \(frameIndex)")
-                pts = CMTime(value: CMTimeValue(poc), timescale: 90000)
                 
-                
+//                // log2_max_pic_order_cnt_lsb 구함
+//                guard let spsInfoParsing = H265SliceHeaderParser().parseH265SPS(rbsp: rbspSPS) else { return }
+//                print("spsInfoParsing: \(spsInfoParsing)") // 0~15
+//               // nalUnit의 Slice Header를 파싱하여 poc 정보를 빼냄
+//                guard let picOrderCntLsb = H265SliceHeaderParser.parse(data: nalData, log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsbMinus4, nalType: Int(nalType)) else { return }
+//                print("picOrderCntLsb: \(picOrderCntLsb.picOrderCntLsb), nalType: \(nalType)")
+//
+//                // 이전 프레임의 poc와 비교하여 wrap-around 실행.
+//                var poc = calculator.calculatePOC(currentPocLsb: picOrderCntLsb.picOrderCntLsb, log2MaxPicOrderCntLsb: spsInfoParsing.log2MaxPicOrderCntLsbMinus4, nalType: Int(nalType), lastPoc: lastPoc)
+//                self.lastPoc = poc
+//                print("calculated poc: \(poc) ; nalType: \(nalType)")
+//
+//                if nalType == 1 {
+//                    // 1 - 0 - 0 - 0 순서로 디코딩, but 재생할 때는 0 - 0 - 0 - 1 순서로 재생해주기 위함
+//                    poc += 14
+//                }
+//                if nalType == 6 {
+//                    // nalType 6은 원래 SEI 이나, 현재 예제로 사용 중인 영상에서 19 - 6 - 6- 6으로 오는 프레임이 있는데 이때 6이 B프레임인 것으로 보임
+//                    // 1 -0- 0-0과 같이 디코딩 순서는 19 -6 -6-6이지만 재생 순서는 6 - 6 -6- 19가 맞다.
+//                    // 이 것을 맞춰주기 위한 하드코딩 부분임. 예제 영상이 달라지면 (서버에서 보내는 영상이 달라지면) 이 부분 수정이 필요하다.
+//                    /// nalType 6은 SEI 로 디코딩의 보조 정보를 담은 데이터일 뿐 실제 프레임이 아닌 경우가 많은데, 인코딩의 설정에 따라 6임에도 실제 프레임일 수 있음. 지금이 그런 경우로 보인다.
+//                    poc -= 1
+//                }
+//                print("calculated2 poc: \(poc) ; nalType: \(nalType)")
+//
+                //pts = CMTime(value: CMTimeValue(ptsSeconds * 2), timescale: 90000)
+
                 print("dts: \(dts), \npts: \(pts)")
                 print("poc: \(poc), naltype: \(nalType)")
-                let frame = H265Frame(poc: poc, dts: dts, pts: pts, nalUnit: nalData)
+                let frame = H265Frame(poc: Int(poc), dts: dts, pts: pts, nalUnit: nalData)
                 decodeFrame(framedata: frame)
                 } else {
                     usleep(10_000)
                 }
             }
         }
+    
+    /// Start code (0x00000001 or 0x000001) 위치를 찾아 범위 반환
+    private func findStartCode(in data: Data) -> Range<Data.Index>? {
+        for i in 0..<data.count - 3 {
+            if data[i] == 0x00 && data[i+1] == 0x00 {
+                if data[i+2] == 0x01 {
+                    return i..<(i+3)
+                } else if i + 3 < data.count && data[i+2] == 0x00 && data[i+3] == 0x01 {
+                    return i..<(i+4)
+                }
+            }
+        }
+        return nil
+    }
      
     private func extractRBSP(from data: Data) -> Data {
+        // H.265 스트림의 구조:
+        /*
+         +----------------+----------------+-----------------+
+         | Start Code     | NAL Unit Header | RBSP (Payload)   |
+         | (00 00 01)     | (2 bytes)       | (Raw data)       |
+         +----------------+----------------+-----------------+
+         start Code : 스트림에서 NAL Unit을 구분하기 위한 것. 디코딩에 사용하지 않음
+         nal Unit Header (2bytes): NAL의 종류 구분(sps, pps, vps, slice 등)
+                                   rbsp 파싱에는 필요하지 않으므로 제거한다.(RBSP 파싱할 때만)
+         */
+        
         let nalHeaderSize = 2
         guard data.count > nalHeaderSize else {
             return Data()
@@ -417,7 +579,7 @@ class H265Decoder {
             print("decoding error: \(statusDecode)")
         }
         
-        frameIndex += 1
+        
     }
     
     

@@ -51,8 +51,9 @@ class ViewController: UIViewController {
         // Do any additional setup after loading the view.
         //let rtspUrl = "rtsp://192.168.0.69:554/SampleVideo_1280x720_30mb_h264_AAC.mkv"
         //let rtspUrl = "rtsp://192.168.0.69:554/test.264"
-        let rtspUrl = "rtsp://192.168.0.69:554/test.265"
-        //let rtspUrl = "rtsp://192.168.0.69:554/video_h265.mkv"
+        //let rtspUrl = "rtsp://192.168.0.69:554/test.265"
+        let rtspUrl = "rtsp://192.168.0.69:554/video_h265.mkv"
+        //let rtspUrl = "rtsp://192.168.0.69:554/V209-MP4-HEVC-1080p-24fps-8bit-AAC2.0.mkv"
         
         self.loginBtn.isHidden = true
         guard let components = URLComponents(string: rtspUrl) else {

@@ -504,20 +504,21 @@ extension RTSPClient {
             
             if rtpPacket.count != 0 {
                 let nalUnit = rtpH265Parser.processRtpPacketAndGetNalUnit(data: rtpPacket, length: rtpPacket.count, marker: rtpHeader.marker != 0)
+                //print("nalUnit all count: \(nalUnit.count)")
+                //print("nalUnit all HexString: \(Data(nalUnit).hexString)")
                 if nalUnit.count != 0 {
                     //print("rtpH265Parser result nalUnit: \(nalUnit)")
                     let header = nalUnit[4]
                     let nalUnitType = (header >> 1) & 0x3F
                     print("rtpH265 nalUnitType: \(nalUnitType)") // UInt8
                     
+                    //let dumpFilePath = "/Users/yumi/Documents/videoDump/h265NalUnitDump.txt"
+                    //MakeDumpFile.dumpRTPPacket(nalUnit, to: dumpFilePath)
+                    
                     //print("videoDecodingInfo.vps isEmpty?: \(videoDecodingInfo.vps.isEmpty)")
                     //("videoDecodingInfo.sps isEmpty?: \(videoDecodingInfo.sps.isEmpty)")
                     //print("videoDecodingInfo.pps isEmpty?: \(videoDecodingInfo.pps.isEmpty)")
-                    if !videoDecodingInfo.vps.isEmpty &&
-                       !videoDecodingInfo.sps.isEmpty &&
-                       !videoDecodingInfo.pps.isEmpty {
-                        readyDecode = true
-                    }
+
                     
                     switch nalUnitType {
                     case 32:
@@ -526,7 +527,21 @@ extension RTSPClient {
                         videoDecodingInfo.sps = Data(nalUnit.dropFirst(4))
                     case 34:
                         videoDecodingInfo.pps = Data(nalUnit.dropFirst(4))
-                    case 19, 20:
+                    case 19, 20, 21:
+                        if !videoDecodingInfo.vps.isEmpty &&
+                           !videoDecodingInfo.sps.isEmpty &&
+                           !videoDecodingInfo.pps.isEmpty {
+                            readyDecode = true
+                        } else {
+                            guard sdpInfo.videoTrack?.vps != nil else { break; }
+                            guard sdpInfo.videoTrack?.sps != nil else { break; }
+                            guard sdpInfo.videoTrack?.pps != nil else { break; }
+                            
+                            videoDecodingInfo.vps = (sdpInfo.videoTrack?.vps ?? Data()).dropFirst(4)
+                            videoDecodingInfo.sps = (sdpInfo.videoTrack?.sps ?? Data()).dropFirst(4)
+                            videoDecodingInfo.pps = (sdpInfo.videoTrack?.pps ?? Data()).dropFirst(4)
+                            readyDecode = true
+                        }
                         if readyDecode == true {
                             let unitData = Data(nalUnit)
                             self.video265Queue.enqueuePacket(unitData, timestamp: rtpHeader.timeStamp, nalType: nalUnitType)
@@ -1484,6 +1499,12 @@ extension RTSPClient {
             return (config > 0 && config < configTable.count) ? configTable[config] : "Unknown"
         }
         
+    }
+}
+
+extension Data {
+    var hexString: String {
+        self.map { String(format: "%02X", $0) }.joined()
     }
 }
 
