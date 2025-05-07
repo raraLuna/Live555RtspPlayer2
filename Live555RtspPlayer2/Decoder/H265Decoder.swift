@@ -172,6 +172,14 @@ class H265Decoder {
     func stop() {
         isDecoding = false
         invalidateSession()
+        videoQueue.removeAll()
+        print("videoQueue.removeAll()")
+        frameQueue.removeAll()
+        print("frameQueue.removeAll()")
+        lastPoc = 0
+        preSegmentAddress = 0
+        H265Decoder.frameCount = 1
+        H265Decoder.gopCount = 0
         print("H265Decoder stopped and resources released.")
     }
     

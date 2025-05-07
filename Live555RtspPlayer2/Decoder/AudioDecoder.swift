@@ -47,6 +47,8 @@ class AudioDecoder {
     
     func stop() {
         isDecoding = false
+        audioQueue.removeAll()
+        print("audioQueue.removeAll()")
     }
     
     // MARK: Public Functions

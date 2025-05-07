@@ -115,6 +115,8 @@ class PCMPlayer {
         playerNode.stop()
         audioEngine.stop()
         isPlaying = false
+        audioPcmQueue.removeAll()
+        print("audioPcmQueue.removeAll()")
         print("[PCMPlayer] Stopped playback")
     }
 }

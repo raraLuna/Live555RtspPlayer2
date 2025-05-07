@@ -51,6 +51,22 @@ final class ThreadSafeQueue<T> {
         queue.sort(by: areInIncreasingOrder)
         lock.signal()
     }
+    
+    // 첫번째 요소 제거하지 않고 읽기만 함
+    func peek() -> T? {
+        lock.wait()
+        let element = queue.first
+        lock.signal()
+        return element
+    }
+    
+    func removeAll() {
+        lock.wait()
+        if !queue.isEmpty {
+            queue.removeAll()
+        }
+        lock.signal()
+    }
 }
 
 extension ThreadSafeQueue where T == (data: Data, rtpTimestamp: UInt32, nalType: UInt8) {

@@ -86,6 +86,8 @@ class H264Decoder {
         self.decompressionSession = nil
         self.formatDescription = nil
         self.frameIndex = 0
+        self.videoQueue.removeAll()
+        print("videoQueue.removeAll()")
         print("H264Decoder stopped and resources released.")
     }
     

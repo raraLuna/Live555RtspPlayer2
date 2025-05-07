@@ -24,6 +24,8 @@ class H265MetalRender {
     
     var frameQueue = ThreadSafeQueue<(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime)>()
     private var isRendering = false
+    private var presentQueue = ThreadSafeQueue<MTLDrawable>()
+    private var presentTimer: DispatchSourceTimer?
     
     init(view: UIView) {
         print("H265MetalRender init")
@@ -106,10 +108,29 @@ class H265MetalRender {
         DispatchQueue.global(qos: .userInteractive).async {
             self.check()
         }
+        
+        // 타이머로 출력 제어 (ex. 30fps → 33ms)
+        presentTimer = DispatchSource.makeTimerSource()
+        presentTimer?.schedule(deadline: .now(), repeating: .milliseconds(33))
+        presentTimer?.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            if let drawable = self.presentQueue.dequeue() {
+                // 화면 출력
+                drawable.present()
+            }
+        }
+        presentTimer?.resume()
     }
     
     func stop() {
         isRendering = false
+        presentTimer?.cancel()
+        presentTimer = nil
+        frameQueue.removeAll()
+        print("frameQueue(render).removeAll()")
+        presentQueue.removeAll()
+        print("presentQueue(render).removeAll()")
+        
     }
     
     func check() {
@@ -194,9 +215,13 @@ class H265MetalRender {
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
                 encoder.endEncoding()
                 
-                cmdBuffer.present(drawable)
+                // 화면 출력 보류
+                //cmdBuffer.present(drawable)
                 cmdBuffer.commit()
                 
+                // 결과물 queue에 저장
+                self.presentQueue.enqueue(drawable)
+                //print("drawable type: \(type(of: drawable))") //CaptureMTLDrawable
                 print("draw finished")
             
         }
