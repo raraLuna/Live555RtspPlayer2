@@ -15,13 +15,12 @@ class ViewController: UIViewController {
     @IBOutlet weak var imageView: UIImageView!
     
     let wasUrl = WasApiInfo.URL_WAS_USA_DEV
-    let userId = "remotestapp@gmail.com"
-    let password = "test531!"
-    let viewerId = "test531!"
-    let userAgent = "03"
-    let pushId = "test531!"
-    let camId = "100721"
-    //let camId = "100719"
+    let userId = ""
+    let password = ""
+    let viewerId = ""
+    let userAgent = ""
+    let pushId = ""
+    let camId = ""
     var sessionId = ""
     var memNo = ""
     var rtspUrl = ""
