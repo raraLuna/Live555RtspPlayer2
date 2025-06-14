@@ -1,4 +1,5 @@
 Live555RtspPlayer2 개요 
+ - Live555Streaming Server와 RTSP 통신으로 영상 데이터를 전송받아 Data 처리를 통해 비디오 영상과 오디오를 parsing 및 rendering하여 플레이합니다.
 
 [ViewController]
 1. UI 세팅 및 rtsp 통신을 처리할 url 처리. 
